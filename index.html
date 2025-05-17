@@ -1,24 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Interactive Parcel Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet + Search CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.min.css" />
-  <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .leaflet-popup-content { max-height: 300px; overflow-y: auto; }
-  </style>
-</head>
-<body>
-<div id="map">Loading map...</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.min.js"></script>
-
 <script>
   const map = L.map('map').setView([40, -89.5], 7);
 
@@ -27,7 +6,7 @@
     maxZoom: 19
   }).addTo(map);
 
-  // ✅ This line is replaced dynamically by the .bat script
+  // Load the correct GeoJSON file (updated via .bat)
   fetch('advantage_geojson.geojson?v=' + Date.now())
     .then(res => res.json())
     .then(data => {
@@ -50,26 +29,31 @@
 
       map.fitBounds(geoLayer.getBounds());
 
+      // 🔍 Enhanced dynamic search logic
       const searchControl = new L.Control.Search({
         layer: geoLayer,
-        textPlaceholder: 'Search parcels...',
+        textPlaceholder: 'Search parcels by any field...',
         collapsed: false,
         hideMarkerOnCollapse: true,
         zoom: 17,
         sourceData: function (text, callResponse) {
-          let results = {};
+          const results = {};
           geoLayer.eachLayer(function (layer) {
             const props = layer.feature.properties;
             const center = layer.getBounds().getCenter();
             for (const key in props) {
               if (String(props[key]).toLowerCase().includes(text.toLowerCase())) {
-                results[`${key}: ${props[key]}`] = center;
-                break;
+                const label = `${key}: ${props[key]}`;
+                results[label] = center;
               }
             }
           });
           callResponse(results);
         }
+      });
+
+      searchControl.on('search:locationfound', function (e) {
+        e.layer.openPopup();
       });
 
       map.addControl(searchControl);
@@ -79,5 +63,3 @@
       alert("❌ Could not load the GeoJSON file.");
     });
 </script>
-</body>
-</html>
