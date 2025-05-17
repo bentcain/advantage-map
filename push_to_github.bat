@@ -1,17 +1,19 @@
 @echo off
-REM Push updated files to GitHub from this folder
+setlocal enabledelayedexpansion
 
-REM Set the current directory as the working repo
+echo 🔄 Committing and pushing changes to GitHub...
+
 cd /d "%~dp0"
 
-REM Stage all changes
 git add .
+git commit -m "Update site content"
+git push
 
-REM Commit with timestamped message
-for /f %%a in ('powershell -Command "Get-Date -Format yyyy-MM-dd_HH:mm:ss"') do set datetime=%%a
-git commit -m "Automated push on %datetime%" 
+:: Get current folder name to build GitHub Pages URL
+for %%I in ("%cd%") do set "FOLDERNAME=%%~nxI"
 
-REM Push to remote GitHub
-git push origin main
+:: Open the live GitHub Pages site
+start https://bentcain.github.io/!FOLDERNAME!/
 
+echo ✅ Done.
 pause
