@@ -13,7 +13,7 @@ git push
 for %%I in ("%cd%") do set "FOLDERNAME=%%~nxI"
 
 :: Open the live GitHub Pages site
-start https://bentcain.github.io/!FOLDERNAME!/
+start https://bentcain.github.io/advantage-map/
 
 echo ✅ Done.
 pause
