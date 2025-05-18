@@ -26,13 +26,11 @@
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
-    // Add basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
     }).addTo(map);
 
-    // Read geojson filename from text file
     fetch('geojson_filename.txt')
       .then(response => {
         if (!response.ok) throw new Error("Could not read geojson_filename.txt");
@@ -40,6 +38,7 @@
       })
       .then(filename => {
         filename = filename.trim();
+        console.log("Loading GeoJSON from:", filename);
 
         fetch(filename + '?v=' + Date.now())
           .then(response => {
@@ -47,6 +46,7 @@
             return response.json();
           })
           .then(data => {
+            console.log("GeoJSON loaded. Creating layer...");
             const geoLayer = L.geoJSON(data, {
               onEachFeature: function (feature, layer) {
                 const props = feature.properties || {};
@@ -63,28 +63,21 @@
 
             map.fitBounds(geoLayer.getBounds());
 
-            // Add red marker for search result
-            const resultMarker = L.circleMarker([0, 0], {
-              radius: 8,
-              color: 'red',
-              weight: 2,
-              fillColor: 'red',
-              fillOpacity: 0.7
-            }).addTo(map);
-
-            // Full-text search
+            console.log("Setting up search control...");
             const searchControl = new L.Control.Search({
               layer: geoLayer,
-              propertyName: '', // search across all fields
+              propertyName: '', // Search across all fields
               initial: false,
               zoom: 17,
-              marker: false,
+              marker: true,
               textPlaceholder: 'Search all fields...',
               hideMarkerOnCollapse: true,
+              text: 'Search',
               buildTip: function(text, val) {
                 return `<div class="search-tip">${text}</div>`;
               },
               sourceData: function(text, callResponse) {
+                console.log("Searching for:", text);
                 const results = {};
                 geoLayer.eachLayer(layer => {
                   const props = layer.feature.properties;
@@ -100,18 +93,17 @@
               }
             });
 
-            searchControl.on('search:locationfound', function(e) {
-              resultMarker.setLatLng(e.latlng);
-            });
-
             map.addControl(searchControl);
+            console.log("Search control added.");
           })
           .catch(error => {
             alert("Failed to load GeoJSON data: " + error.message);
+            console.error(error);
           });
       })
       .catch(error => {
         alert("Failed to load filename: " + error.message);
+        console.error(error);
       });
   </script>
 </body>
