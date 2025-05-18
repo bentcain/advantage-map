@@ -20,10 +20,13 @@
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
+    // Satellite basemap
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri',
+      maxZoom: 19
     }).addTo(map);
 
+    // Load GeoJSON file dynamically
     fetch('advantage_geojson.geojson?v=' + Date.now())
       .then(response => {
         if (!response.ok) throw new Error("GeoJSON file load failed");
@@ -33,25 +36,28 @@
         const geoLayer = L.geoJSON(data, {
           onEachFeature: function (feature, layer) {
             const props = feature.properties || {};
+            const center = layer.getBounds().getCenter();
             let popupContent = '<table>';
             for (const key in props) {
               popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
             }
             popupContent += '</table>';
+            popupContent += `<br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a>`;
             layer.bindPopup(popupContent);
           }
         }).addTo(map);
 
         map.fitBounds(geoLayer.getBounds());
 
+        // Dynamic full-field search
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          textPlaceholder: 'Search by any field...',
+          textPlaceholder: 'Search parcels...',
           collapsed: false,
           hideMarkerOnCollapse: true,
           zoom: 17,
           sourceData: function (text, callResponse) {
-            let results = {};
+            const results = {};
             geoLayer.eachLayer(function (layer) {
               const props = layer.feature.properties;
               const center = layer.getBounds().getCenter();
@@ -74,7 +80,7 @@
       })
       .catch(err => {
         console.error(err);
-        alert("❌ Could not load the GeoJSON file. Please make sure the filename was injected and the file exists.");
+        alert("❌ Could not load the GeoJSON file. Please verify the name was injected and the file exists.");
       });
   </script>
 </body>
