@@ -20,13 +20,11 @@
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
-    // Basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
     }).addTo(map);
 
-    // Load filename from .txt
     fetch('geojson_filename.txt')
       .then(response => response.text())
       .then(filename => {
@@ -55,7 +53,7 @@
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Custom red marker for search hits
+        // Red circle marker
         const resultMarker = L.circleMarker([0, 0], {
           radius: 8,
           color: 'red',
@@ -64,10 +62,10 @@
           weight: 2
         }).addTo(map);
 
-        // Search control wired to GeoJSON
+        // Search control
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: '', // Search all properties
+          propertyName: '', // Search all fields
           textPlaceholder: 'Search parcels...',
           hideMarkerOnCollapse: true,
           zoom: 17,
@@ -92,13 +90,15 @@
         });
 
         searchControl.on('search:locationfound', function(e) {
-          resultMarker.setLatLng(e.latlng);
+          if (e.latlng) {
+            resultMarker.setLatLng(e.latlng).addTo(map);
+          }
         });
 
         map.addControl(searchControl);
       })
       .catch(err => {
-        alert("Error loading map: " + err.message);
+        alert("Failed to load GeoJSON data: " + err.message);
         console.error(err);
       });
   </script>
