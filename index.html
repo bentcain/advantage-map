@@ -1,95 +1,101 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Interactive Map</title>
+  <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-search@2.9.8/dist/leaflet-search.min.css" />
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.css" />
   <style>
     html, body, #map {
       height: 100%;
       margin: 0;
-      padding: 0;
     }
-    .leaflet-popup-content {
-      max-height: 300px;
-      overflow-y: auto;
+    .search-tip b {
+      color: #fff;
+      background: #2196f3;
+      padding: 0 4px;
+      border-radius: 2px;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
+<div id="map"></div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-control-search@2.9.8/dist/leaflet-search.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.js"></script>
 
-  <script>
-    const map = L.map('map').setView([40, -89.5], 7);
+<script>
+  const map = L.map('map').setView([39.8, -89.6], 6); // Illinois-centric default
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri',
-      maxZoom: 19
-    }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
 
-    fetch('advantage_geojson.geojson?v=' + Date.now())
-      .then(res => res.json())
-      .then(data => {
-        const geoLayer = L.geoJSON(data, {
-          onEachFeature: function (feature, layer) {
-            const props = feature.properties || {};
-            const center = layer.getBounds().getCenter();
+  const geojsonFile = "advantage_geojson.geojson";
 
-            let popup = `<b>Parcel Info:</b><br>`;
-            for (const key in props) {
-              popup += `<b>${key}</b>: ${props[key]}<br>`;
-            }
-
-            popup += `<br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a><br>`;
-            popup += `<a href="https://example.com/leave-note?parcel=${encodeURIComponent(props['Parcel ID'] || '')}" target="_blank">Leave a Note</a>`;
-
-            layer.bindPopup(popup);
+  fetch(geojsonFile)
+    .then(response => {
+      if (!response.ok) {
+        throw new Error("GeoJSON fetch failed");
+      }
+      return response.json();
+    })
+    .then(data => {
+      const allFeatures = L.geoJSON(data, {
+        onEachFeature: (feature, layer) => {
+          const props = feature.properties;
+          let content = "<table>";
+          for (const key in props) {
+            content += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
           }
-        }).addTo(map);
+          content += "</table>";
+          layer.bindPopup(content);
+        }
+      }).addTo(map);
 
-        map.fitBounds(geoLayer.getBounds());
+      map.fitBounds(allFeatures.getBounds());
 
-        const searchControl = new L.Control.Search({
-          layer: geoLayer,
-          textPlaceholder: 'Search parcels by any field...',
-          collapsed: false,
-          hideMarkerOnCollapse: true,
-          zoom: 17,
-          sourceData: function (text, callResponse) {
-            const results = {};
-            geoLayer.eachLayer(function (layer) {
-              const props = layer.feature.properties;
-              const center = layer.getBounds().getCenter();
-              for (const key in props) {
-                if (String(props[key]).toLowerCase().includes(text.toLowerCase())) {
-                  const label = `${key}: ${props[key]}`;
-                  results[label] = center;
-                }
-              }
-            });
-            callResponse(results);
-          }
-        });
-
-        searchControl.on('search:locationfound', function (e) {
-          e.layer.openPopup();
-        });
-
-        map.addControl(searchControl);
-      })
-      .catch(err => {
-        console.error("GeoJSON load failed:", err);
-        alert("❌ Could not load the GeoJSON file.");
+      // Build index of all fields
+      const featuresIndex = [];
+      data.features.forEach(f => {
+        const props = f.properties;
+        for (const key in props) {
+          featuresIndex.push({
+            loc: f.geometry,
+            title: props[key],
+            feature: f
+          });
+        }
       });
-  </script>
+
+      new L.Control.Search({
+        layer: allFeatures,
+        sourceData: function(text, callResponse) {
+          const matches = [];
+          text = text.toLowerCase();
+          for (let i = 0; i < featuresIndex.length; i++) {
+            const val = String(featuresIndex[i].title).toLowerCase();
+            if (val.includes(text)) {
+              matches.push({
+                loc: featuresIndex[i].loc,
+                title: featuresIndex[i].title
+              });
+            }
+          }
+          callResponse(matches);
+        },
+        zoom: 17,
+        initial: false,
+        marker: false,
+        autoType: false,
+        textPlaceholder: "Search parcels..."
+      }).addTo(map);
+    })
+    .catch(err => {
+      alert("❌ Could not load the GeoJSON file.");
+      console.error(err);
+    });
+</script>
 </body>
 </html>
