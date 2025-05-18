@@ -41,19 +41,22 @@
             }
             popup += `</table><br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a>`;
             layer.bindPopup(popup);
+            // Add a searchable _text property
+            const values = Object.values(props).join(" ");
+            feature.properties._search = values;
           }
         }).addTo(map);
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Enable dynamic full-field search
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: '', // Search all fields
+          propertyName: '_search', // Search across all properties combined
           textPlaceholder: 'Search parcels...',
           moveToLocation: function (latlng, title, map) {
-            map.setView(latlng, 17); // zoom to location
-          }
+            map.setView(latlng, 17);
+          },
+          marker: false
         });
 
         map.addControl(searchControl);
