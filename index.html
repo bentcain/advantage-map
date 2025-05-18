@@ -55,29 +55,20 @@
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Red marker to show search result
-        const resultMarker = L.circleMarker([0, 0], {
-          radius: 8,
-          color: 'red',
-          weight: 2,
-          fillColor: 'red',
-          fillOpacity: 0.7
-        }).addTo(map);
-
-        // Full-field search
+        // Enable full-field search with marker
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: '', // search all fields
+          propertyName: '', // Search across all fields
           initial: false,
           zoom: 17,
-          marker: false, // we use our own
+          marker: true,
           textPlaceholder: 'Search all fields...',
           hideMarkerOnCollapse: true,
           text: 'Search',
-          buildTip: function (text, val) {
+          buildTip: function(text, val) {
             return `<div class="search-tip">${text}</div>`;
           },
-          sourceData: function (text, callResponse) {
+          sourceData: function(text, callResponse) {
             const results = {};
             geoLayer.eachLayer(layer => {
               const props = layer.feature.properties;
@@ -90,13 +81,6 @@
               }
             });
             callResponse(results);
-          }
-        });
-
-        // Safely move marker on selection
-        searchControl.on('search:locationfound', function (e) {
-          if (e.latlng) {
-            resultMarker.setLatLng(e.latlng);
           }
         });
 
