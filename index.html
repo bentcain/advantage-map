@@ -7,95 +7,75 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.css" />
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-    }
-    .search-tip b {
-      color: #fff;
-      background: #2196f3;
-      padding: 0 4px;
-      border-radius: 2px;
-    }
+    html, body, #map { height: 100%; margin: 0; }
+    .leaflet-popup-content { max-height: 300px; overflow-y: auto; }
   </style>
 </head>
 <body>
-<div id="map"></div>
+  <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.js"></script>
 
-<script>
-  const map = L.map('map').setView([39.8, -89.6], 6); // Illinois-centric default
+  <script>
+    const map = L.map('map').setView([39.8, -89.6], 7);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-  const geojsonFile = "advantage_geojson.geojson";
-
-  fetch(geojsonFile)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error("GeoJSON fetch failed");
-      }
-      return response.json();
-    })
-    .then(data => {
-      const allFeatures = L.geoJSON(data, {
-        onEachFeature: (feature, layer) => {
-          const props = feature.properties;
-          let content = "<table>";
-          for (const key in props) {
-            content += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-          }
-          content += "</table>";
-          layer.bindPopup(content);
-        }
-      }).addTo(map);
-
-      map.fitBounds(allFeatures.getBounds());
-
-      // Build index of all fields
-      const featuresIndex = [];
-      data.features.forEach(f => {
-        const props = f.properties;
-        for (const key in props) {
-          featuresIndex.push({
-            loc: f.geometry,
-            title: props[key],
-            feature: f
-          });
-        }
-      });
-
-      new L.Control.Search({
-        layer: allFeatures,
-        sourceData: function(text, callResponse) {
-          const matches = [];
-          text = text.toLowerCase();
-          for (let i = 0; i < featuresIndex.length; i++) {
-            const val = String(featuresIndex[i].title).toLowerCase();
-            if (val.includes(text)) {
-              matches.push({
-                loc: featuresIndex[i].loc,
-                title: featuresIndex[i].title
-              });
+    fetch('advantage_geojson.geojson?v=' + Date.now())
+      .then(response => {
+        if (!response.ok) throw new Error("GeoJSON file load failed");
+        return response.json();
+      })
+      .then(data => {
+        const geoLayer = L.geoJSON(data, {
+          onEachFeature: function (feature, layer) {
+            const props = feature.properties || {};
+            let popupContent = '<table>';
+            for (const key in props) {
+              popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
             }
+            popupContent += '</table>';
+            layer.bindPopup(popupContent);
           }
-          callResponse(matches);
-        },
-        zoom: 17,
-        initial: false,
-        marker: false,
-        autoType: false,
-        textPlaceholder: "Search parcels..."
-      }).addTo(map);
-    })
-    .catch(err => {
-      alert("❌ Could not load the GeoJSON file.");
-      console.error(err);
-    });
-</script>
+        }).addTo(map);
+
+        map.fitBounds(geoLayer.getBounds());
+
+        const searchControl = new L.Control.Search({
+          layer: geoLayer,
+          textPlaceholder: 'Search by any field...',
+          collapsed: false,
+          hideMarkerOnCollapse: true,
+          zoom: 17,
+          sourceData: function (text, callResponse) {
+            let results = {};
+            geoLayer.eachLayer(function (layer) {
+              const props = layer.feature.properties;
+              const center = layer.getBounds().getCenter();
+              for (const key in props) {
+                if (String(props[key]).toLowerCase().includes(text.toLowerCase())) {
+                  results[`${key}: ${props[key]}`] = center;
+                  break;
+                }
+              }
+            });
+            callResponse(results);
+          }
+        });
+
+        searchControl.on('search:locationfound', function (e) {
+          e.layer.openPopup();
+        });
+
+        map.addControl(searchControl);
+      })
+      .catch(err => {
+        console.error(err);
+        alert("❌ Could not load the GeoJSON file. Please make sure the filename was injected and the file exists.");
+      });
+  </script>
 </body>
 </html>
