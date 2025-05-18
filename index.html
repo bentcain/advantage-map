@@ -5,65 +5,101 @@
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .leaflet-popup-content { max-height: 300px; overflow-y: auto; }
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+    }
+    .leaflet-popup-content {
+      max-height: 300px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.js"></script>
+  <script src="https://unpkg.com/leaflet-search@3.0.7/dist/leaflet-search.min.js"></script>
 
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
+    // Satellite basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
     }).addTo(map);
 
-    fetch('advantage_geojson.geojson?v=' + Date.now())
+    // Read filename from geojson_filename.txt
+    fetch('geojson_filename.txt')
       .then(response => {
-        if (!response.ok) throw new Error("GeoJSON file load failed");
-        return response.json();
+        if (!response.ok) throw new Error("Could not read geojson_filename.txt");
+        return response.text();
       })
-      .then(data => {
-        const geoLayer = L.geoJSON(data, {
-          onEachFeature: function (feature, layer) {
-            const props = feature.properties || {};
-            const center = layer.getBounds().getCenter();
-            let popup = "<table>";
-            for (const key in props) {
-              popup += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-            }
-            popup += `</table><br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a>`;
-            layer.bindPopup(popup);
-            // Add a searchable _text property
-            const values = Object.values(props).join(" ");
-            feature.properties._search = values;
-          }
-        }).addTo(map);
+      .then(filename => {
+        filename = filename.trim();
 
-        map.fitBounds(geoLayer.getBounds());
+        fetch(filename + '?v=' + Date.now())
+          .then(response => {
+            if (!response.ok) throw new Error("GeoJSON file load failed");
+            return response.json();
+          })
+          .then(data => {
+            const geoLayer = L.geoJSON(data, {
+              onEachFeature: function (feature, layer) {
+                const props = feature.properties || {};
+                const center = layer.getBounds().getCenter();
+                let popupContent = '<table>';
+                for (const key in props) {
+                  popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+                }
+                popupContent += '</table>';
+                popupContent += `<br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a>`;
+                layer.bindPopup(popupContent);
+              }
+            }).addTo(map);
 
-        const searchControl = new L.Control.Search({
-          layer: geoLayer,
-          propertyName: '_search', // Search across all properties combined
-          textPlaceholder: 'Search parcels...',
-          moveToLocation: function (latlng, title, map) {
-            map.setView(latlng, 17);
-          },
-          marker: false
-        });
+            map.fitBounds(geoLayer.getBounds());
 
-        map.addControl(searchControl);
+            // Full-text search across all properties
+            const searchControl = new L.Control.Search({
+              layer: geoLayer,
+              propertyName: '', // Search all fields
+              initial: false,
+              zoom: 17,
+              marker: false,
+              textPlaceholder: 'Search all fields...',
+              hideMarkerOnCollapse: true,
+              text: 'Search',
+              buildTip: function(text, val) {
+                return `<div class="search-tip">${text}</div>`;
+              },
+              sourceData: function(text, callResponse) {
+                const results = {};
+                geoLayer.eachLayer(layer => {
+                  const props = layer.feature.properties;
+                  const match = Object.values(props).some(value =>
+                    String(value).toLowerCase().includes(text.toLowerCase())
+                  );
+                  if (match) {
+                    const label = Object.values(props).join(" | ");
+                    results[label] = layer.getBounds().getCenter();
+                  }
+                });
+                callResponse(results);
+              }
+            });
+
+            map.addControl(searchControl);
+          })
+          .catch(error => {
+            alert("Failed to load GeoJSON data: " + error.message);
+          });
       })
-      .catch(err => {
-        alert("Could not load the GeoJSON file. Please verify the name was injected and the file exists.");
-        console.error(err);
+      .catch(error => {
+        alert("Failed to load filename: " + error.message);
       });
   </script>
 </body>
