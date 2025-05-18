@@ -55,7 +55,7 @@
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Marker to indicate search result
+        // Red marker to show search result
         const resultMarker = L.circleMarker([0, 0], {
           radius: 8,
           color: 'red',
@@ -64,20 +64,20 @@
           fillOpacity: 0.7
         }).addTo(map);
 
-        // Enable full-field search
+        // Full-field search
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: '', // Search across all fields
+          propertyName: '', // search all fields
           initial: false,
           zoom: 17,
-          marker: false, // We'll manage the marker ourselves
+          marker: false, // we use our own
           textPlaceholder: 'Search all fields...',
           hideMarkerOnCollapse: true,
           text: 'Search',
-          buildTip: function(text, val) {
+          buildTip: function (text, val) {
             return `<div class="search-tip">${text}</div>`;
           },
-          sourceData: function(text, callResponse) {
+          sourceData: function (text, callResponse) {
             const results = {};
             geoLayer.eachLayer(layer => {
               const props = layer.feature.properties;
@@ -93,9 +93,11 @@
           }
         });
 
-        // Update red marker on result selection
-        searchControl.on('search:locationfound', function(e) {
-          resultMarker.setLatLng(e.latlng);
+        // Safely move marker on selection
+        searchControl.on('search:locationfound', function (e) {
+          if (e.latlng) {
+            resultMarker.setLatLng(e.latlng);
+          }
         });
 
         map.addControl(searchControl);
