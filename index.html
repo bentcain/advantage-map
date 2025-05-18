@@ -1,97 +1,67 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Interactive Parcel Map</title>
   <meta charset="utf-8" />
+  <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.css" />
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-    .search-input {
-      font-size: 16px;
-    }
-    .leaflet-popup-content {
-      font-size: 14px;
-    }
+    html, body, #map { height: 100%; margin: 0; }
+    .leaflet-popup-content { max-height: 300px; overflow-y: auto; }
   </style>
 </head>
 <body>
-<div id="map"></div>
+  <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-<script src="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-search@2.9.9/dist/leaflet-search.min.js"></script>
 
-<script>
-  const map = L.map('map').setView([39.5, -89.5], 6);
+  <script>
+    const map = L.map('map').setView([39.8, -89.6], 7);
 
-  const basemap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri',
+      maxZoom: 19
+    }).addTo(map);
 
-  const geojsonPath = "advantage_geojson.geojson"; // to be replaced by batch script
-
-  fetch(geojsonPath)
-    .then(response => {
-      if (!response.ok) throw new Error("GeoJSON file not found");
-      return response.json();
-    })
-    .then(data => {
-      const geojsonLayer = L.geoJSON(data, {
-        style: {
-          color: "#3388ff",
-          weight: 2,
-          fillOpacity: 0.3
-        },
-        onEachFeature: function (feature, layer) {
-          let popupContent = "";
-          for (const key in feature.properties) {
-            const value = feature.properties[key];
-            popupContent += `<strong>${key}</strong>: ${value}<br>`;
+    fetch('advantage_geojson.geojson?v=' + Date.now())
+      .then(response => {
+        if (!response.ok) throw new Error("GeoJSON file load failed");
+        return response.json();
+      })
+      .then(data => {
+        const geoLayer = L.geoJSON(data, {
+          onEachFeature: function (feature, layer) {
+            const props = feature.properties || {};
+            const center = layer.getBounds().getCenter();
+            let popup = "<table>";
+            for (const key in props) {
+              popup += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+            }
+            popup += `</table><br><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a>`;
+            layer.bindPopup(popup);
           }
+        }).addTo(map);
 
-          const coords = layer.getBounds().getCenter();
-          const lat = coords.lat;
-          const lng = coords.lng;
-          popupContent += `<br><a href="https://www.google.com/maps?q=&layer=c&cbll=${lat},${lng}&cbp=11,0,0,0,0" target="_blank">Street View</a>`;
+        map.fitBounds(geoLayer.getBounds());
 
-          layer.bindPopup(popupContent);
-        }
-      }).addTo(map);
+        // Enable dynamic full-field search
+        const searchControl = new L.Control.Search({
+          layer: geoLayer,
+          propertyName: '', // Search all fields
+          textPlaceholder: 'Search parcels...',
+          moveToLocation: function (latlng, title, map) {
+            map.setView(latlng, 17); // zoom to location
+          }
+        });
 
-      map.fitBounds(geojsonLayer.getBounds());
-
-      // Create dynamic search index
-      const searchControl = new L.Control.Search({
-        layer: geojsonLayer,
-        propertyName: '', // blank for dynamic property matching
-        initial: false,
-        zoom: 17,
-        marker: false,
-        textPlaceholder: 'Search all fields...'
+        map.addControl(searchControl);
+      })
+      .catch(err => {
+        alert("Could not load the GeoJSON file. Please verify the name was injected and the file exists.");
+        console.error(err);
       });
-
-      searchControl._filterLayer = function(layer, searchString) {
-        for (let key in layer.feature.properties) {
-          const value = String(layer.feature.properties[key]);
-          if (value.toLowerCase().includes(searchString.toLowerCase())) {
-            return true;
-          }
-        }
-        return false;
-      };
-
-      map.addControl(searchControl);
-    })
-    .catch(err => {
-      alert("❌ Could not load the GeoJSON file. Please verify the name was injected and that the file exists.");
-    });
-</script>
+  </script>
 </body>
 </html>
