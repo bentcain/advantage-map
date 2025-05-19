@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
-  <!-- Leaflet Core -->
+
+  <!-- Leaflet core -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
-  <!-- Leaflet Search (2.9.7 WORKING VERSION) -->
+  <!-- Leaflet Search plugin (working version) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
@@ -28,70 +28,65 @@
   <div id="map"></div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const map = L.map('map').setView([39.8, -89.6], 7);
+    const map = L.map('map').setView([39.8, -89.6], 7);
 
-      // Satellite basemap
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles © Esri',
-        maxZoom: 19
-      }).addTo(map);
+    // Satellite basemap
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri',
+      maxZoom: 19
+    }).addTo(map);
 
-      // Load GeoJSON filename from text file
-      fetch('geojson_filename.txt')
-        .then(res => res.text())
-        .then(fileName => {
-          fileName = fileName.trim();
-          return fetch(fileName + '?v=' + Date.now());
-        })
-        .then(res => res.json())
-        .then(data => {
-          const geoLayer = L.geoJSON(data, {
-            onEachFeature: (feature, layer) => {
-              const props = feature.properties || {};
-              const center = layer.getBounds().getCenter();
-              let popupContent = '<table>';
-              for (const key in props) {
-                popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-              }
-              popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
-              popupContent += '</table>';
-              layer.bindPopup(popupContent);
+    // Load the GeoJSON file specified in geojson_filename.txt
+    fetch('geojson_filename.txt')
+      .then(response => response.text())
+      .then(filename => fetch(filename.trim()))
+      .then(response => response.json())
+      .then(data => {
+        // Load GeoJSON onto the map
+        const geoLayer = L.geoJSON(data, {
+          onEachFeature: function (feature, layer) {
+            const props = feature.properties || {};
+            const center = layer.getBounds().getCenter();
+            let popupContent = '<table>';
+            for (const key in props) {
+              popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
             }
-          }).addTo(map);
+            popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
+            popupContent += '</table>';
+            layer.bindPopup(popupContent);
+          }
+        }).addTo(map);
 
-          map.fitBounds(geoLayer.getBounds());
+        map.fitBounds(geoLayer.getBounds());
 
-          // Setup working full-text search
-          const searchControl = new L.Control.Search({
-            layer: geoLayer,
-            propertyName: '', // Search across all fields manually
-            zoom: 16,
-            initial: false,
-            textPlaceholder: 'Search parcels...',
-            marker: false,
-            sourceData: function (text, callResponse) {
-              const results = {};
-              geoLayer.eachLayer(function (layer) {
-                const props = layer.feature?.properties || {};
-                const match = Object.values(props).some(value =>
-                  String(value).toLowerCase().includes(text.toLowerCase())
-                );
-                if (match) {
-                  const label = Object.values(props).join(' | ');
-                  results[label] = layer.getBounds().getCenter();
-                }
-              });
-              callResponse(results);
-            }
-          });
-
-          map.addControl(searchControl);
-        })
-        .catch(err => {
-          alert('Failed to load GeoJSON or setup search: ' + err.message);
+        console.log("✅ GeoLayer loaded. Feature count:", geoLayer.getLayers().length);
+        geoLayer.eachLayer(layer => {
+          console.log("Feature properties:", layer.feature?.properties);
         });
-    });
+
+        // TEMP DEBUG SEARCH: hardcoded test data
+        const testSearchControl = new L.Control.Search({
+          layer: geoLayer,
+          initial: false,
+          zoom: 17,
+          marker: true,
+          textPlaceholder: 'Search test labels...',
+          sourceData: function (text, callResponse) {
+            // Dummy test to confirm search bar works
+            const dummy = {
+              "Test Location A": [39.75, -89.65],
+              "Test Location B": [39.85, -89.55]
+            };
+            callResponse(dummy);
+          }
+        });
+
+        map.addControl(testSearchControl);
+      })
+      .catch(err => {
+        alert("Error loading map: " + err.message);
+        console.error(err);
+      });
   </script>
 </body>
 </html>
