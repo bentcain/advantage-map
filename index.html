@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Leaflet core -->
+  
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
-  <!-- Leaflet Search plugin -->
+  <!-- Leaflet Search -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
@@ -22,31 +22,32 @@
       max-height: 300px;
       overflow-y: auto;
     }
-    .legend {
-      background: white;
-      padding: 10px;
-      line-height: 1.5em;
-      font-size: 12px;
+    #notes-link {
       position: absolute;
-      bottom: 30px;
-      left: 10px;
+      bottom: 15px;
+      left: 15px;
+      background: white;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: sans-serif;
       z-index: 1000;
-      border: 1px solid #ccc;
-    }
-    .legend span {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      margin-right: 6px;
-      vertical-align: middle;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="legend" id="legend"></div>
+  <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js"></script>
+  <script src="firebase-config.js"></script>
 
   <script>
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     const map = L.map('map').setView([39.8, -89.6], 7);
 
     // Satellite basemap
@@ -55,103 +56,82 @@
       maxZoom: 19
     }).addTo(map);
 
-    // Color by Lead Status
-    const statusColors = {
-      "New": "#1f78b4",
-      "New with Contact": "#33a02c",
-      "On Hold": "#ff7f00",
-      "Unqualified": "#a6cee3",
-      "Not Interested": "#e31a1c",
-      "Research Needed": "#b2df8a",
-      "Research Completed": "#6a3d9a",
-      "Follow Up 1": "#cab2d6",
-      "Follow Up 2": "#fb9a99",
-      "Follow Up 3": "#fdbf6f",
-      "No Response": "#ffff99",
-      "RR2": "#b15928",
-      "RC2": "#8dd3c7",
-      "Unable To Contact": "#999999",
-      "Conversion": "#000000"
-    };
-
-    const defaultColor = "#cccccc";
-    let searchMarker = null;
-
-    // Load the GeoJSON file
-    fetch('geojson_filename.txt')
-      .then(response => response.text())
-      .then(filename => fetch(filename.trim()))
-      .then(response => response.json())
+    // Load GeoJSON filename
+    fetch("geojson_filename.txt")
+      .then(res => res.text())
+      .then(file => fetch(file.trim()))
+      .then(res => res.json())
       .then(data => {
         const geoLayer = L.geoJSON(data, {
-          style: function (feature) {
-            const status = feature.properties?.["Lead Status"] || "";
-            return {
-              color: "#333",
-              weight: 1,
-              fillOpacity: 0.7,
-              fillColor: statusColors[status] || defaultColor
-            };
-          },
-          onEachFeature: function (feature, layer) {
+          onEachFeature: (feature, layer) => {
             const props = feature.properties || {};
             const center = layer.getBounds().getCenter();
             let popupContent = '<table>';
             for (const key in props) {
               popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
             }
-            popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
-            popupContent += '</table>';
-            layer.bindPopup(popupContent);
 
-            feature.properties.searchText = Object.values(props).join(" ");
+            // Optionally pull live status/note data here from Firebase
+            const uid = props.uid;
+            if (uid) {
+              db.ref(uid).once("value").then(snapshot => {
+                const data = snapshot.val();
+                if (data) {
+                  popupContent += `<tr><td><strong>Status</strong></td><td>${data.status || '—'}</td></tr>`;
+                  if (data.notes?.length > 0) {
+                    popupContent += `<tr><td colspan="2"><em>Recent Note:</em><br>${data.notes[data.notes.length - 1].text}</td></tr>`;
+                  }
+                }
+                popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
+                popupContent += `<tr><td colspan="2"><a href="notes.html" target="_blank">📋 View Notes Table</a></td></tr>`;
+                popupContent += '</table>';
+                layer.bindPopup(popupContent);
+              });
+            } else {
+              popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
+              popupContent += `<tr><td colspan="2"><a href="notes.html" target="_blank">📋 View Notes Table</a></td></tr>`;
+              popupContent += '</table>';
+              layer.bindPopup(popupContent);
+            }
           }
         }).addTo(map);
 
         map.fitBounds(geoLayer.getBounds());
 
+        // Search setup
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: 'searchText',
-          textPlaceholder: 'Search parcels...',
-          zoom: 18,
+          propertyName: "", // Not used due to custom source
+          zoom: 17,
           initial: false,
-          marker: false
-        });
-
-        searchControl.on('search:locationfound', function(e) {
-          if (searchMarker) {
-            map.removeLayer(searchMarker);
+          textPlaceholder: "Search parcels...",
+          marker: {
+            icon: new L.Icon.Default(),
+            animate: true,
+            circle: {
+              radius: 15,
+              weight: 2,
+              color: "red"
+            }
+          },
+          sourceData: function (text, callResponse) {
+            const results = {};
+            geoLayer.eachLayer(function (layer) {
+              const props = layer.feature?.properties || {};
+              const match = Object.values(props).some(v =>
+                String(v).toLowerCase().includes(text.toLowerCase())
+              );
+              if (match) {
+                const label = Object.values(props).join(" | ");
+                results[label] = layer.getBounds().getCenter();
+              }
+            });
+            callResponse(results);
           }
-          searchMarker = L.circleMarker(e.latlng, {
-            radius: 10,
-            color: 'red',
-            fillColor: 'red',
-            fillOpacity: 0.9
-          }).addTo(map);
         });
-
-        map.on('click', function () {
-          if (searchMarker) {
-            map.removeLayer(searchMarker);
-            searchMarker = null;
-          }
-        });
-
         map.addControl(searchControl);
-
-        // Add Legend
-        const legend = document.getElementById("legend");
-        Object.keys(statusColors).forEach(key => {
-          const color = statusColors[key];
-          const item = `<div><span style="background:${color}"></span>${key}</div>`;
-          legend.innerHTML += item;
-        });
       })
-      .catch(err => {
-        alert("Error loading map: " + err.message);
-        console.error(err);
-      });
+      .catch(err => alert("Error loading GeoJSON: " + err.message));
   </script>
 </body>
 </html>
