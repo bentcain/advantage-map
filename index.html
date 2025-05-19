@@ -54,7 +54,6 @@
           marker: true,
           textPlaceholder: 'Search all fields...',
           hideMarkerOnCollapse: true,
-          text: 'Search',
           buildTip: (text, val) => `<div class="search-tip">${text}</div>`,
           sourceData: (text, callResponse) => {
             const results = {};
@@ -74,7 +73,10 @@
 
         map.addControl(searchControl);
       })
-      .catch(err => alert("Map error: " + err.message));
+      .catch(err => {
+        alert("Map error: " + err.message);
+        console.error(err);
+      });
   </script>
 </body>
 </html>
