@@ -22,10 +22,29 @@
       max-height: 300px;
       overflow-y: auto;
     }
+    .legend {
+      background: white;
+      padding: 10px;
+      line-height: 1.5em;
+      font-size: 12px;
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      z-index: 1000;
+      border: 1px solid #ccc;
+    }
+    .legend span {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div class="legend" id="legend"></div>
 
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
@@ -36,13 +55,44 @@
       maxZoom: 19
     }).addTo(map);
 
-    // Load the GeoJSON file specified in geojson_filename.txt
+    // Color by Lead Status
+    const statusColors = {
+      "New": "#1f78b4",
+      "New with Contact": "#33a02c",
+      "On Hold": "#ff7f00",
+      "Unqualified": "#a6cee3",
+      "Not Interested": "#e31a1c",
+      "Research Needed": "#b2df8a",
+      "Research Completed": "#6a3d9a",
+      "Follow Up 1": "#cab2d6",
+      "Follow Up 2": "#fb9a99",
+      "Follow Up 3": "#fdbf6f",
+      "No Response": "#ffff99",
+      "RR2": "#b15928",
+      "RC2": "#8dd3c7",
+      "Unable To Contact": "#999999",
+      "Conversion": "#000000"
+    };
+
+    const defaultColor = "#cccccc";
+    let searchMarker = null;
+
+    // Load the GeoJSON file
     fetch('geojson_filename.txt')
       .then(response => response.text())
       .then(filename => fetch(filename.trim()))
       .then(response => response.json())
       .then(data => {
         const geoLayer = L.geoJSON(data, {
+          style: function (feature) {
+            const status = feature.properties?.["Lead Status"] || "";
+            return {
+              color: "#333",
+              weight: 1,
+              fillOpacity: 0.7,
+              fillColor: statusColors[status] || defaultColor
+            };
+          },
           onEachFeature: function (feature, layer) {
             const props = feature.properties || {};
             const center = layer.getBounds().getCenter();
@@ -54,24 +104,49 @@
             popupContent += '</table>';
             layer.bindPopup(popupContent);
 
-            // Store searchable text
             feature.properties.searchText = Object.values(props).join(" ");
           }
         }).addTo(map);
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Real full-field search
         const searchControl = new L.Control.Search({
           layer: geoLayer,
           propertyName: 'searchText',
           textPlaceholder: 'Search parcels...',
+          zoom: 18,
           initial: false,
-          zoom: 17,
           marker: false
         });
 
+        searchControl.on('search:locationfound', function(e) {
+          if (searchMarker) {
+            map.removeLayer(searchMarker);
+          }
+          searchMarker = L.circleMarker(e.latlng, {
+            radius: 10,
+            color: 'red',
+            fillColor: 'red',
+            fillOpacity: 0.9
+          }).addTo(map);
+        });
+
+        map.on('click', function () {
+          if (searchMarker) {
+            map.removeLayer(searchMarker);
+            searchMarker = null;
+          }
+        });
+
         map.addControl(searchControl);
+
+        // Add Legend
+        const legend = document.getElementById("legend");
+        Object.keys(statusColors).forEach(key => {
+          const color = statusColors[key];
+          const item = `<div><span style="background:${color}"></span>${key}</div>`;
+          legend.innerHTML += item;
+        });
       })
       .catch(err => {
         alert("Error loading map: " + err.message);
