@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
-  <!-- Leaflet Search plugin (working version) -->
+  <!-- Leaflet Search plugin -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
@@ -42,7 +42,6 @@
       .then(filename => fetch(filename.trim()))
       .then(response => response.json())
       .then(data => {
-        // Load GeoJSON onto the map
         const geoLayer = L.geoJSON(data, {
           onEachFeature: function (feature, layer) {
             const props = feature.properties || {};
@@ -54,34 +53,25 @@
             popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
             popupContent += '</table>';
             layer.bindPopup(popupContent);
+
+            // Store searchable text
+            feature.properties.searchText = Object.values(props).join(" ");
           }
         }).addTo(map);
 
         map.fitBounds(geoLayer.getBounds());
 
-        console.log("✅ GeoLayer loaded. Feature count:", geoLayer.getLayers().length);
-        geoLayer.eachLayer(layer => {
-          console.log("Feature properties:", layer.feature?.properties);
-        });
-
-        // TEMP DEBUG SEARCH: hardcoded test data
-        const testSearchControl = new L.Control.Search({
+        // Real full-field search
+        const searchControl = new L.Control.Search({
           layer: geoLayer,
+          propertyName: 'searchText',
+          textPlaceholder: 'Search parcels...',
           initial: false,
           zoom: 17,
-          marker: true,
-          textPlaceholder: 'Search test labels...',
-          sourceData: function (text, callResponse) {
-            // Dummy test to confirm search bar works
-            const dummy = {
-              "Test Location A": [39.75, -89.65],
-              "Test Location B": [39.85, -89.55]
-            };
-            callResponse(dummy);
-          }
+          marker: false
         });
 
-        map.addControl(testSearchControl);
+        map.addControl(searchControl);
       })
       .catch(err => {
         alert("Error loading map: " + err.message);
