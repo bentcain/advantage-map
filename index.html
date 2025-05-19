@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
+
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
@@ -39,9 +39,9 @@
   <div id="map"></div>
   <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js"></script>
+  <!-- Firebase (Compat Version) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="firebase-config.js"></script>
 
   <script>
@@ -56,7 +56,6 @@
       maxZoom: 19
     }).addTo(map);
 
-    // Load GeoJSON filename
     fetch("geojson_filename.txt")
       .then(res => res.text())
       .then(file => fetch(file.trim()))
@@ -71,7 +70,6 @@
               popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
             }
 
-            // Optionally pull live status/note data here from Firebase
             const uid = props.uid;
             if (uid) {
               db.ref(uid).once("value").then(snapshot => {
@@ -98,10 +96,9 @@
 
         map.fitBounds(geoLayer.getBounds());
 
-        // Search setup
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: "", // Not used due to custom source
+          propertyName: "", // Using sourceData instead
           zoom: 17,
           initial: false,
           textPlaceholder: "Search parcels...",
@@ -129,6 +126,7 @@
             callResponse(results);
           }
         });
+
         map.addControl(searchControl);
       })
       .catch(err => alert("Error loading GeoJSON: " + err.message));
