@@ -20,11 +20,11 @@ with open(geojson_path, "r", encoding="utf-8") as f:
 
 for feature in data.get("features", []):
     props = feature.get("properties", {})
-    searchable = " | ".join(f"{k}: {v}" for k, v in props.items() if v is not None)
+    searchable = " | ".join(f"{k}: {v}" for k, v in props.items() if v is not None and k != "searchable")
     props["searchable"] = searchable
-    feature["properties"] = props
+    feature["properties"] = props  # ✅ This now keeps all fields including uid
 
 with open(geojson_path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 
-print(f"✅ 'searchable' field added to: {geojson_path}")
+print(f"✅ 'searchable' field added (uid preserved): {geojson_path}")
