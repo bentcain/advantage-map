@@ -9,14 +9,18 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
-  <!-- Leaflet Search (verified version and working path) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
-  <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
+  <!-- Leaflet Search (verified working) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.min.css" />
+  <script src="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
   <style>
     html, body, #map {
       height: 100%;
       margin: 0;
+    }
+    .leaflet-popup-content {
+      max-height: 300px;
+      overflow-y: auto;
     }
   </style>
 </head>
@@ -26,65 +30,50 @@
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
-    // ✅ Satellite basemap from ArcGIS (confirmed)
+    // Satellite basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
     }).addTo(map);
 
-    // 👇 Insert dynamic GeoJSON loader here (works with geojson_filename.txt)
-    // This example uses static GeoJSON for testing
-    const testGeoJSON = {
-      "type": "FeatureCollection",
-      "features": [{
-        "type": "Feature",
-        "properties": { "name": "Sample Parcel" },
-        "geometry": {
-          "type": "Point",
-          "coordinates": [-89.6, 39.8]
-        }
-      }]
-    };
-
-    const geoLayer = L.geoJSON(testGeoJSON, {
-      onEachFeature: function (feature, layer) {
-        const props = feature.properties;
-        const center = layer.getLatLng();
-        let popupContent = '<table>';
-        for (const key in props) {
-          popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-        }
-        popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
-        popupContent += '</table>';
-        layer.bindPopup(popupContent);
-      }
-    }).addTo(map);
-
-    // ✅ Search control (field-agnostic)
-    const searchControl = new L.Control.Search({
-      layer: geoLayer,
-      propertyName: '', // Search all fields
-      marker: true,
-      moveToLocation: function(latlng, title, map) {
-        map.setView(latlng, 17); // Zoom to match popup
-      },
-      sourceData: function(text, callResponse) {
-        const results = {};
-        geoLayer.eachLayer(layer => {
-          const props = layer.feature.properties;
-          const match = Object.values(props).some(value =>
-            String(value).toLowerCase().includes(text.toLowerCase())
-          );
-          if (match) {
-            const label = Object.values(props).join(" | ");
-            results[label] = layer.getLatLng();
+    // Load geojson filename from txt
+    fetch('geojson_filename.txt')
+      .then(response => {
+        if (!response.ok) throw new Error("Could not read geojson_filename.txt");
+        return response.text();
+      })
+      .then(filename => {
+        filename = filename.trim();
+        return fetch(filename + '?v=' + Date.now());
+      })
+      .then(response => {
+        if (!response.ok) throw new Error("GeoJSON file load failed");
+        return response.json();
+      })
+      .then(data => {
+        const geoLayer = L.geoJSON(data, {
+          onEachFeature: function (feature, layer) {
+            const props = feature.properties || {};
+            const center = layer.getBounds().getCenter();
+            let popupContent = '<table>';
+            for (const key in props) {
+              popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+            }
+            popupContent += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
+            popupContent += '</table>';
+            layer.bindPopup(popupContent);
           }
-        });
-        callResponse(results);
-      }
-    });
+        }).addTo(map);
 
-    map.addControl(searchControl);
+        map.fitBounds(geoLayer.getBounds());
+
+        // (Optional) Add Search Later — keep this disabled until stable
+        // const searchControl = new L.Control.Search({ ... });
+        // map.addControl(searchControl);
+      })
+      .catch(error => {
+        alert("Map error: " + error.message);
+      });
   </script>
 </body>
 </html>
