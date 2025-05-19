@@ -9,9 +9,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
-  <!-- Leaflet Search (verified working) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.min.css" />
-  <script src="https://unpkg.com/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
+  <!-- Leaflet Search -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
   <style>
     html, body, #map {
@@ -30,16 +30,16 @@
   <script>
     const map = L.map('map').setView([39.8, -89.6], 7);
 
-    // Satellite basemap
+    // Satellite Basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
     }).addTo(map);
 
-    // Load geojson filename from txt
+    // Load GeoJSON from geojson_filename.txt
     fetch('geojson_filename.txt')
       .then(response => {
-        if (!response.ok) throw new Error("Could not read geojson_filename.txt");
+        if (!response.ok) throw new Error("geojson_filename.txt not found");
         return response.text();
       })
       .then(filename => {
@@ -47,7 +47,7 @@
         return fetch(filename + '?v=' + Date.now());
       })
       .then(response => {
-        if (!response.ok) throw new Error("GeoJSON file load failed");
+        if (!response.ok) throw new Error("GeoJSON file could not be loaded");
         return response.json();
       })
       .then(data => {
@@ -67,12 +67,38 @@
 
         map.fitBounds(geoLayer.getBounds());
 
-        // (Optional) Add Search Later — keep this disabled until stable
-        // const searchControl = new L.Control.Search({ ... });
-        // map.addControl(searchControl);
+        // Full-field Search
+        const searchControl = new L.Control.Search({
+          layer: geoLayer,
+          propertyName: '', // Enable search across all fields
+          textPlaceholder: 'Search all fields...',
+          zoom: 17,
+          initial: false,
+          marker: false,
+          autoType: false,
+          buildTip: function (text, val) {
+            return `<div class="search-tip">${text}</div>`;
+          },
+          sourceData: function (text, callback) {
+            const results = {};
+            geoLayer.eachLayer(layer => {
+              const props = layer.feature.properties || {};
+              const match = Object.values(props).some(val =>
+                String(val).toLowerCase().includes(text.toLowerCase())
+              );
+              if (match) {
+                const label = Object.values(props).join(' | ');
+                results[label] = layer.getBounds().getCenter();
+              }
+            });
+            callback(results);
+          }
+        });
+
+        map.addControl(searchControl);
       })
       .catch(error => {
-        alert("Map error: " + error.message);
+        alert("Error loading map: " + error.message);
       });
   </script>
 </body>
