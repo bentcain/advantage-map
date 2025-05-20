@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
-  <!-- Firebase (compat version for GitHub Pages) -->
+  <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="firebase-config.js"></script>
@@ -24,8 +24,9 @@
       margin: 0;
     }
     .leaflet-popup-content {
-      max-height: 300px;
+      max-height: 320px;
       overflow-y: auto;
+      font-size: 14px;
     }
     .legend {
       position: absolute;
@@ -35,7 +36,6 @@
       padding: 8px;
       font-size: 14px;
       border-radius: 8px;
-      line-height: 1.4em;
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
@@ -62,7 +62,6 @@
     const db = firebase.database();
 
     const map = L.map('map').setView([39.8, -89.6], 7);
-
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
@@ -76,16 +75,17 @@
       "Not Interested": "#7f7f7f"
     };
 
-    function getColor(status) {
+    function getStatusColor(status) {
+      const normalized = String(status).toLowerCase();
+      if (normalized.includes("follow up")) return statusColors["Follow Up"];
       return statusColors[status] || "#cccccc";
     }
 
     function updateLegend() {
       const legend = document.getElementById("status-legend");
       legend.innerHTML = "<strong>Lead Status</strong><br>";
-      for (const status in statusColors) {
-        const color = statusColors[status];
-        legend.innerHTML += `<i style="background:${color};width:12px;height:12px;display:inline-block;margin-right:6px;"></i>${status}<br>`;
+      for (const key in statusColors) {
+        legend.innerHTML += `<i style="background:${statusColors[key]};width:12px;height:12px;display:inline-block;margin-right:6px;"></i>${key}<br>`;
       }
     }
 
@@ -96,44 +96,54 @@
       .then(data => {
         const geoLayer = L.geoJSON(data, {
           style: feature => {
-            const status = feature.properties?.["Lead Status"] || "New";
+            const status = feature.properties?.["Status"] || "New";
             return {
-              color: "#555",
+              color: "#333",
               weight: 1,
-              fillColor: getColor(status),
+              fillColor: getStatusColor(status),
               fillOpacity: 0.6
             };
           },
           onEachFeature: (feature, layer) => {
             const props = feature.properties || {};
-            const uid = props.uid || "";
+            const uid = props.uid;
             const center = layer.getBounds().getCenter();
+            const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
 
-            let popupContent = '<table>';
+            // Build popup
+            let popupContent = `<table>`;
             for (const key in props) {
-              popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+              if (key !== "searchable") {
+                popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+              }
             }
 
-            const sv = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
-            const notesLink = `notes.html?uid=${encodeURIComponent(uid)}`;
+            const notesLink = `notes.html?uid=${uid}`;
+            const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
 
+            // Load Firebase data and render popup
             db.ref(uid).once("value").then(snapshot => {
-              const noteData = snapshot.val();
-              if (noteData?.status) {
-                popupContent += `<tr><td><strong>Status</strong></td><td>${noteData.status}</td></tr>`;
+              const fb = snapshot.val() || {};
+              const status = fb.status || props.Status || "New";
+              const notes = fb.notes || [];
+
+              popupContent += `<tr><td><strong>Status</strong></td><td>
+                <select id="status-${uid}">
+                  ${statusOptions.map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+                </select>
+              </td></tr>`;
+
+              popupContent += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3" cols="25"></textarea></td></tr>`;
+              popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
+
+              if (notes.length > 0) {
+                popupContent += `<tr><td colspan="2"><em>Recent Note:</em><br>${notes[notes.length - 1].text}</td></tr>`;
               }
-              if (noteData?.notes?.length > 0) {
-                const lastNote = noteData.notes[noteData.notes.length - 1];
-                popupContent += `<tr><td colspan="2"><em>Recent Note:</em><br>${lastNote.text}</td></tr>`;
-              }
-              popupContent += `<tr><td colspan="2"><a href="${sv}" target="_blank">Street View</a></td></tr>`;
+
               popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
-              popupContent += "</table>";
-              layer.bindPopup(popupContent);
-            }).catch(() => {
-              popupContent += `<tr><td colspan="2"><a href="${sv}" target="_blank">Street View</a></td></tr>`;
-              popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
-              popupContent += "</table>";
+              popupContent += `<tr><td colspan="2"><a href="${streetViewLink}" target="_blank">Street View</a></td></tr>`;
+              popupContent += `</table>`;
+
               layer.bindPopup(popupContent);
             });
           }
@@ -176,6 +186,34 @@
         map.addControl(searchControl);
       })
       .catch(err => alert("Error loading GeoJSON: " + err.message));
+
+    // Save button logic
+    function saveNote(uid) {
+      const note = document.getElementById(`note-${uid}`).value.trim();
+      const status = document.getElementById(`status-${uid}`).value;
+
+      const updates = {};
+      updates["status"] = status;
+
+      if (note) {
+        updates["notes"] = firebase.database.ServerValue.TIMESTAMP; // To ensure update triggers
+        db.ref(uid).child("notes").once("value").then(snapshot => {
+          const notes = snapshot.val() || [];
+          notes.push({
+            text: note,
+            timestamp: new Date().toISOString()
+          });
+          db.ref(uid).update({
+            status,
+            notes
+          });
+        });
+      } else {
+        db.ref(uid).update({ status });
+      }
+
+      alert("Note and status saved!");
+    }
   </script>
 </body>
 </html>
