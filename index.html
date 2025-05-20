@@ -5,7 +5,7 @@
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Leaflet core -->
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 
@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
-  <!-- Firebase (compat) -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="firebase-config.js"></script>
@@ -24,7 +24,7 @@
       margin: 0;
     }
     .leaflet-popup-content {
-      max-height: 320px;
+      max-height: 300px;
       overflow-y: auto;
       font-size: 14px;
     }
@@ -62,6 +62,7 @@
     const db = firebase.database();
 
     const map = L.map('map').setView([39.8, -89.6], 7);
+
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri',
       maxZoom: 19
@@ -98,7 +99,7 @@
           style: feature => {
             const status = feature.properties?.["Status"] || "New";
             return {
-              color: "#333",
+              color: "#444",
               weight: 1,
               fillColor: getStatusColor(status),
               fillOpacity: 0.6
@@ -110,8 +111,7 @@
             const center = layer.getBounds().getCenter();
             const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
 
-            // Build popup
-            let popupContent = `<table>`;
+            let popupContent = "<table>";
             for (const key in props) {
               if (key !== "searchable") {
                 popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
@@ -121,7 +121,6 @@
             const notesLink = `notes.html?uid=${uid}`;
             const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
 
-            // Load Firebase data and render popup
             db.ref(uid).once("value").then(snapshot => {
               const fb = snapshot.val() || {};
               const status = fb.status || props.Status || "New";
@@ -137,7 +136,8 @@
               popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
 
               if (notes.length > 0) {
-                popupContent += `<tr><td colspan="2"><em>Recent Note:</em><br>${notes[notes.length - 1].text}</td></tr>`;
+                const last = notes[notes.length - 1];
+                popupContent += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text} <br><small>${last.user || ""} - ${last.timestamp || ""}</small></td></tr>`;
               }
 
               popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
@@ -154,10 +154,9 @@
 
         const searchControl = new L.Control.Search({
           layer: geoLayer,
-          propertyName: "", // use sourceData
-          zoom: 17,
+          propertyName: "searchable",
           initial: false,
-          textPlaceholder: "Search parcels...",
+          zoom: 17,
           marker: {
             icon: new L.Icon.Default(),
             animate: true,
@@ -169,13 +168,10 @@
           },
           sourceData: function (text, callResponse) {
             const results = {};
-            geoLayer.eachLayer(function (layer) {
+            geoLayer.eachLayer(layer => {
               const props = layer.feature?.properties || {};
-              const match = Object.values(props).some(v =>
-                String(v).toLowerCase().includes(text.toLowerCase())
-              );
-              if (match) {
-                const label = Object.values(props).join(" | ");
+              if (String(props.searchable).toLowerCase().includes(text.toLowerCase())) {
+                const label = props.searchable;
                 results[label] = layer.getBounds().getCenter();
               }
             });
@@ -185,34 +181,26 @@
 
         map.addControl(searchControl);
       })
-      .catch(err => alert("Error loading GeoJSON: " + err.message));
+      .catch(err => alert("Map load error: " + err.message));
 
-    // Save button logic
     function saveNote(uid) {
       const note = document.getElementById(`note-${uid}`).value.trim();
       const status = document.getElementById(`status-${uid}`).value;
 
-      const updates = {};
-      updates["status"] = status;
+      if (!note && !status) return;
 
-      if (note) {
-        updates["notes"] = firebase.database.ServerValue.TIMESTAMP; // To ensure update triggers
-        db.ref(uid).child("notes").once("value").then(snapshot => {
-          const notes = snapshot.val() || [];
+      db.ref(uid).child("notes").once("value").then(snapshot => {
+        const notes = snapshot.val() || [];
+        if (note) {
           notes.push({
             text: note,
+            user: "Ben",
             timestamp: new Date().toISOString()
           });
-          db.ref(uid).update({
-            status,
-            notes
-          });
-        });
-      } else {
-        db.ref(uid).update({ status });
-      }
-
-      alert("Note and status saved!");
+        }
+        db.ref(uid).update({ status, notes });
+        alert("Saved!");
+      });
     }
   </script>
 </body>

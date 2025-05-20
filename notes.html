@@ -3,22 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <title>Parcel Notes Dashboard</title>
-  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="firebase-config.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 1em; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
-    th, td { padding: 8px; border: 1px solid #ccc; }
-    textarea { width: 100%; height: 60px; }
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+    }
+    textarea {
+      width: 98%;
+    }
+    select {
+      width: 100%;
+    }
   </style>
 </head>
 <body>
-  <h1>📋 Parcel Notes Dashboard</h1>
-  <div id="status"></div>
-  <table id="notes-table">
+  <h2>Parcel Notes Dashboard</h2>
+  <table id="notesTable">
     <thead>
-      <tr><th>UID</th><th>Status</th><th>New Note</th><th>History</th><th>Actions</th></tr>
+      <tr>
+        <th>UID</th>
+        <th>Status</th>
+        <th>New Note</th>
+        <th>Submit</th>
+        <th>Note History</th>
+      </tr>
     </thead>
     <tbody></tbody>
   </table>
@@ -26,9 +46,11 @@
   <script>
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const tableBody = document.querySelector("#notes-table tbody");
 
-    function createRow(uid, data = {}) {
+    const uidParam = new URLSearchParams(window.location.search).get("uid");
+    const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
+
+    function renderRow(uid, data) {
       const row = document.createElement("tr");
 
       // UID
@@ -39,54 +61,74 @@
       // Status dropdown
       const statusCell = document.createElement("td");
       const statusSelect = document.createElement("select");
-      const statuses = ["New", "Follow Up", "Not Interested", "On Hold", "Conversion"];
-      statuses.forEach(s => {
+      statusOptions.forEach(option => {
         const opt = document.createElement("option");
-        opt.value = opt.textContent = s;
-        if (s === data.status) opt.selected = true;
+        opt.value = option;
+        opt.textContent = option;
+        if (data.status === option) opt.selected = true;
         statusSelect.appendChild(opt);
       });
       statusCell.appendChild(statusSelect);
       row.appendChild(statusCell);
 
-      // New note input
+      // Note entry
       const noteCell = document.createElement("td");
       const noteInput = document.createElement("textarea");
       noteCell.appendChild(noteInput);
       row.appendChild(noteCell);
 
-      // History
-      const historyCell = document.createElement("td");
-      const notes = (data.notes || []).map(n => `• ${n.user}: ${n.text}`).join("<br>");
-      historyCell.innerHTML = notes;
-      row.appendChild(historyCell);
-
-      // Save
-      const actionCell = document.createElement("td");
+      // Submit button
+      const saveCell = document.createElement("td");
       const saveBtn = document.createElement("button");
       saveBtn.textContent = "Save";
       saveBtn.onclick = () => {
-        const newNote = noteInput.value.trim();
-        const user = "Ben"; // You can change this or link to login later
-        const timestamp = new Date().toISOString();
         const updates = {
-          status: statusSelect.value,
-          notes: [...(data.notes || []), ...(newNote ? [{ text: newNote, user, timestamp }] : [])]
+          status: statusSelect.value
         };
-        db.ref(uid).set(updates);
-        alert("✅ Saved!");
+        if (noteInput.value.trim()) {
+          const newNote = {
+            text: noteInput.value.trim(),
+            user: "Ben",
+            timestamp: new Date().toISOString()
+          };
+          db.ref(uid).child("notes").once("value").then(snapshot => {
+            const notes = snapshot.val() || [];
+            notes.push(newNote);
+            db.ref(uid).update({
+              status: statusSelect.value,
+              notes: notes
+            });
+            alert("Note saved!");
+            location.reload();
+          });
+        } else {
+          db.ref(uid).update({ status: statusSelect.value });
+          alert("Status updated.");
+          location.reload();
+        }
       };
-      actionCell.appendChild(saveBtn);
-      row.appendChild(actionCell);
+      saveCell.appendChild(saveBtn);
+      row.appendChild(saveCell);
 
-      tableBody.appendChild(row);
+      // Note history
+      const historyCell = document.createElement("td");
+      const notes = data.notes || [];
+      if (notes.length === 0) {
+        historyCell.innerHTML = "<em>No notes</em>";
+      } else {
+        historyCell.innerHTML = notes.map(note =>
+          `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
+        ).join("");
+      }
+      row.appendChild(historyCell);
+
+      document.querySelector("#notesTable tbody").appendChild(row);
     }
 
     db.ref().once("value").then(snapshot => {
-      const data = snapshot.val() || {};
-      for (const uid in data) {
-        createRow(uid, data[uid]);
-      }
+      const all = snapshot.val() || {};
+      const filtered = uidParam ? { [uidParam]: all[uidParam] } : all;
+      Object.entries(filtered).forEach(([uid, data]) => renderRow(uid, data));
     });
   </script>
 </body>
