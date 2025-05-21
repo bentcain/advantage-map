@@ -5,29 +5,30 @@
   <title>Advantage Interactive Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    .legend {
+      position: absolute;
+      bottom: 30px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      font-size: 12px;
+      z-index: 1000;
     }
-    .leaflet-popup-content select,
-    .leaflet-popup-content textarea {
-      width: 100%;
-    }
+    .legend div { margin-bottom: 4px; }
   </style>
 </head>
 <body>
 <div id="map"></div>
+<div class="legend" id="legend"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 <script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
-
 <script src="firebase-config.js"></script>
 
 <script>
@@ -35,101 +36,115 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const map = L.map('map').setView([40, -89], 7);
-
 L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-  maxZoom: 20,
-  subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+  maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
 }).addTo(map);
 
-// Load GeoJSON dynamically
+const colorMap = {
+  "Conversion": "gold", "Follow Up 1": "orange", "Follow Up 2": "orange", "Follow Up 3": "orange",
+  "New": "gray", "Not Interested": "black", "On Hold": "purple", "New with Contact": "blue",
+  "Unqualified": "red", "Research Needed": "pink", "Research Completed": "green",
+  "No Response": "lightblue", "RR2": "yellow", "RC2": "yellow", "Unable To Contact": "brown"
+};
+
+function updateLegend() {
+  const grouped = {
+    "Conversion": "gold",
+    "Follow Up": "orange",
+    "New": "gray",
+    "Not Interested": "black",
+    "On Hold": "purple"
+  };
+  const legendDiv = document.getElementById("legend");
+  legendDiv.innerHTML = "<b>Lead Status</b><br>";
+  for (let status in grouped) {
+    legendDiv.innerHTML += `<div><span style="background:${grouped[status]};width:10px;height:10px;display:inline-block;margin-right:5px;"></span>${status}</div>`;
+  }
+}
+
+updateLegend();
+
 fetch("geojson_filename.txt")
-  .then(response => response.text())
+  .then(r => r.text())
   .then(filename => fetch(filename.replace(/\r?\n|\r/g, '').trim()))
-  .then(response => response.json())
+  .then(r => r.json())
   .then(data => {
-    const geojsonLayer = L.geoJSON(data, {
-      style: feature => {
-        const status = feature.properties.Status || "New";
-        const colorMap = {
-          "New": "gray", "New with Contact": "blue", "Follow Up 1": "orange",
-          "Follow Up 2": "orange", "Follow Up 3": "orange", "On Hold": "purple",
-          "Unqualified": "red", "Not Interested": "black", "Research Needed": "pink",
-          "Research Completed": "green", "No Response": "lightblue",
-          "RR2": "yellow", "RC2": "yellow", "Unable To Contact": "brown", "Conversion": "gold"
-        };
-        return { color: colorMap[status] || "gray", weight: 2 };
-      },
-      onEachFeature: onEachFeature
+    const geojson = L.geoJSON(data, {
+      onEachFeature: onEachFeature,
+      style: feature => ({
+        color: colorMap[feature.properties.Status] || "gray",
+        weight: 2
+      })
     }).addTo(map);
 
-    map.fitBounds(geojsonLayer.getBounds());
+    const labelLayer = L.geoJSON(data, {
+      pointToLayer: (f, latlng) => {
+        const label = f.properties["Project ID"] || "";
+        return L.marker(latlng, {
+          icon: L.divIcon({
+            className: "label",
+            html: `<div style="font-size:10px; background:white; padding:1px;">${label}</div>`
+          })
+        });
+      }
+    }).addTo(map);
 
-    const searchControl = new L.Control.Search({
-      layer: geojsonLayer,
+    map.fitBounds(geojson.getBounds());
+
+    const search = new L.Control.Search({
+      layer: geojson,
       propertyName: "_searchable",
       marker: false,
-      moveToLocation: (latlng, title, map) => {
-        map.setView(latlng, 17);
-      }
+      moveToLocation: (latlng, title, map) => map.setView(latlng, 17)
     });
 
-    searchControl.on('search:locationfound', e => {
-      if (!e.layer._popup) return;
-      e.layer.openPopup();
-      L.circleMarker(e.latlng, {
-        radius: 10, color: 'red', weight: 3, fill: false
-      }).addTo(map);
+    search.on('search:locationfound', e => {
+      if (e.layer._popup) e.layer.openPopup();
+      L.circleMarker(e.latlng, { radius: 8, color: 'red', fill: false }).addTo(map);
     });
 
-    map.addControl(searchControl);
+    map.addControl(search);
   });
 
 function onEachFeature(feature, layer) {
   const props = feature.properties;
   if (!props.uid) return;
 
-  let content = `<b>Project: ${props.Source || "N/A"}</b><br><hr>`;
+  const name = props["Project ID"] || "Unnamed";
+  let popup = `<b>${name}</b><br><hr>`;
   for (let key in props) {
     if (key !== "_searchable" && key !== "uid") {
-      content += `<b>${key}</b>: ${props[key]}<br>`;
+      popup += `<b>${key}</b>: ${props[key]}<br>`;
     }
   }
 
   const uid = props.uid;
-  const currentStatus = props.Status || "New";
-
-  content += `
+  const status = props.Status || "New";
+  popup += `
     <hr>
-    <label><b>Lead Status:</b></label>
+    <label><b>Status:</b></label>
     <select id="status-${uid}">
-      ${[
-        "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
-        "On Hold", "Unqualified", "Not Interested", "Research Needed",
-        "Research Completed", "No Response", "RR2", "RC2",
-        "Unable To Contact", "Conversion"
-      ].map(status =>
-        `<option value="${status}" ${status === currentStatus ? "selected" : ""}>${status}</option>`
-      ).join("")}
+      ${Object.keys(colorMap).map(s => `<option ${s === status ? "selected" : ""}>${s}</option>`).join("")}
     </select>
     <button onclick="saveStatus('${uid}', this)">Save</button><br><br>
 
-    <label><b>Add Note:</b></label><br>
-    <textarea id="note-${uid}" rows="3"></textarea><br>
-    <button onclick="saveNote('${uid}')">Submit Note</button>
+    <label><b>Note:</b></label>
+    <textarea id="note-${uid}" rows="3"></textarea>
+    <button onclick="saveNote('${uid}')">Submit Note</button><br><br>
+
+    <a href="notes.html?uid=${uid}" target="_blank">📋 View Parcel Notes</a><br>
+    <a href="https://www.google.com/maps?q=&layer=c&cbll=${layer._latlng.lat},${layer._latlng.lng}" target="_blank">🌍 Street View</a>
   `;
 
-  layer.bindPopup(content);
+  layer.bindPopup(popup);
 }
 
 function saveStatus(uid, btn) {
-  const newStatus = document.getElementById(`status-${uid}`).value;
-  db.ref("status/" + uid).set(newStatus, (error) => {
-    if (!error) {
-      alert("Status updated!");
+  const value = document.getElementById(`status-${uid}`).value;
+  db.ref("status/" + uid).set(value, err => {
+    if (!err) {
       btn.innerText = "Saved!";
       setTimeout(() => btn.innerText = "Save", 1000);
-    } else {
-      alert("Error saving status.");
     }
   });
 }
@@ -137,14 +152,9 @@ function saveStatus(uid, btn) {
 function saveNote(uid) {
   const note = document.getElementById(`note-${uid}`).value;
   if (!note.trim()) return alert("Note is empty.");
-  const timestamp = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: note, time: timestamp }, (error) => {
-    if (!error) {
-      alert("Note saved!");
-      document.getElementById(`note-${uid}`).value = "";
-    } else {
-      alert("Error saving note.");
-    }
+  const time = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time }, err => {
+    if (!err) document.getElementById(`note-${uid}`).value = "";
   });
 }
 </script>

@@ -7,15 +7,18 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+    input[type="text"] { margin-bottom: 10px; padding: 5px; width: 300px; font-size: 1em; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
     th { background-color: #f0f0f0; }
-    select, textarea, button { font-size: 0.9em; margin-top: 4px; width: 100%; }
+    select, textarea, button { font-size: 0.9em; width: 100%; margin-top: 4px; }
     textarea { height: 50px; }
   </style>
 </head>
 <body>
   <h2>Master Parcel Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search UID or note text..." oninput="filterTable()" />
+
   <table id="parcelTable">
     <thead>
       <tr>
@@ -23,7 +26,7 @@
         <th>Status</th>
         <th>Latest Note</th>
         <th>Full Note History</th>
-        <th>Add New Note</th>
+        <th>New Note</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -43,6 +46,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+let masterData = [];
+
 function loadDashboard() {
   const tableBody = document.querySelector("#parcelTable tbody");
   tableBody.innerHTML = "";
@@ -54,79 +59,110 @@ function loadDashboard() {
     statusRef.once("value"),
     notesRef.once("value")
   ]).then(([statusSnap, notesSnap]) => {
-    const allUIDs = new Set([
-      ...Object.keys(statusSnap.val() || {}),
-      ...Object.keys(notesSnap.val() || {})
-    ]);
+    const statuses = statusSnap.val() || {};
+    const notes = notesSnap.val() || {};
+    const allUIDs = new Set([...Object.keys(statuses), ...Object.keys(notes)]);
+
+    const rows = [];
 
     allUIDs.forEach(uid => {
-      const status = statusSnap.val()?.[uid] || "New";
-      const notes = notesSnap.val()?.[uid] || {};
-      const noteKeys = Object.keys(notes).sort((a, b) =>
-        new Date(notes[a].time) - new Date(notes[b].time)
+      const status = statuses[uid] || "New";
+      const noteGroup = notes[uid] || {};
+      const noteKeys = Object.keys(noteGroup).sort((a, b) =>
+        new Date(noteGroup[a].time) - new Date(noteGroup[b].time)
       );
-
-      const latestNote = noteKeys.length > 0 ? notes[noteKeys[noteKeys.length - 1]].text : "";
+      const latestNote = noteKeys.length > 0 ? noteGroup[noteKeys[noteKeys.length - 1]].text : "";
       const fullNotes = noteKeys.map(k =>
-        `<div><strong>${new Date(notes[k].time).toLocaleString()}:</strong> ${notes[k].text}</div>`
+        `<div><strong>${new Date(noteGroup[k].time).toLocaleString()}:</strong> ${noteGroup[k].text}</div>`
       ).join("");
 
-      const row = document.createElement("tr");
-
-      row.innerHTML = `
-        <td>${uid}</td>
-
-        <td>
-          <select onchange="updateStatus('${uid}', this)">
-            ${[
-              "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
-              "On Hold", "Unqualified", "Not Interested", "Research Needed",
-              "Research Completed", "No Response", "RR2", "RC2",
-              "Unable To Contact", "Conversion"
-            ].map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-        </td>
-
-        <td>${latestNote}</td>
-        <td>${fullNotes}</td>
-
-        <td>
-          <textarea id="note-${uid}" placeholder="Type a new note..."></textarea>
-          <button onclick="saveNote('${uid}')">Submit Note</button>
-        </td>
-      `;
-
-      tableBody.appendChild(row);
+      rows.push({
+        uid,
+        status,
+        latestNote,
+        fullNotes
+      });
     });
+
+    // Sort by custom priority
+    const priority = {
+      "Conversion": 1,
+      "Follow Up 1": 2, "Follow Up 2": 2, "Follow Up 3": 2,
+      "New": 3,
+      "Not Interested": 4,
+      "On Hold": 5
+    };
+
+    rows.sort((a, b) => {
+      const prioA = priority[a.status] || 99;
+      const prioB = priority[b.status] || 99;
+      return prioA - prioB;
+    });
+
+    masterData = rows;
+
+    renderTable(rows);
   });
 }
 
-function updateStatus(uid, selectEl) {
-  const newStatus = selectEl.value;
-  db.ref("status/" + uid).set(newStatus, (error) => {
-    if (!error) {
-      alert("Status updated.");
-    } else {
-      alert("Error saving status.");
-    }
+function renderTable(data) {
+  const tableBody = document.querySelector("#parcelTable tbody");
+  tableBody.innerHTML = "";
+
+  data.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.uid}</td>
+      <td>
+        <select onchange="updateStatus('${row.uid}', this)">
+          ${[
+            "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
+            "On Hold", "Unqualified", "Not Interested", "Research Needed",
+            "Research Completed", "No Response", "RR2", "RC2",
+            "Unable To Contact", "Conversion"
+          ].map(s => `<option value="${s}" ${s === row.status ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </td>
+      <td>${row.latestNote}</td>
+      <td>${row.fullNotes}</td>
+      <td>
+        <textarea id="note-${row.uid}" placeholder="Add a note..."></textarea>
+        <button onclick="saveNote('${row.uid}')">Submit</button>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+function updateStatus(uid, select) {
+  const value = select.value;
+  db.ref("status/" + uid).set(value, err => {
+    if (!err) alert("Status updated.");
   });
 }
 
 function saveNote(uid) {
-  const noteBox = document.getElementById(`note-${uid}`);
-  const noteText = noteBox.value.trim();
-  if (!noteText) return alert("Note is empty.");
-
-  const timestamp = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: noteText, time: timestamp }, (error) => {
-    if (!error) {
-      alert("Note saved!");
-      noteBox.value = "";
-      loadDashboard(); // Refresh notes
-    } else {
-      alert("Error saving note.");
+  const box = document.getElementById(`note-${uid}`);
+  const text = box.value.trim();
+  if (!text) return alert("Note is empty.");
+  const time = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text, time }, err => {
+    if (!err) {
+      alert("Note saved.");
+      box.value = "";
+      loadDashboard();
     }
   });
+}
+
+function filterTable() {
+  const query = document.getElementById("searchInput").value.toLowerCase();
+  const filtered = masterData.filter(row =>
+    row.uid.toLowerCase().includes(query) ||
+    row.latestNote.toLowerCase().includes(query) ||
+    row.fullNotes.toLowerCase().includes(query)
+  );
+  renderTable(filtered);
 }
 
 window.onload = loadDashboard;
