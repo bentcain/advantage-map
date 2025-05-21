@@ -41,9 +41,10 @@ L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
   subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
 }).addTo(map);
 
+// 🚨 CROSS-PLATFORM FETCH FIX APPLIED HERE
 fetch("geojson_filename.txt")
   .then(response => response.text())
-  .then(filename => fetch(filename.trim()))
+  .then(filename => fetch(filename.replace(/\r?\n|\r/g, '').trim()))
   .then(response => response.json())
   .then(data => {
     const geojsonLayer = L.geoJSON(data, {
