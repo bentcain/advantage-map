@@ -2,176 +2,151 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Interactive Parcel Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
+  <title>Advantage Interactive Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
   <style>
-    html, body, #map { margin: 0; height: 100%; }
-    .legend {
-      position: absolute;
-      bottom: 20px;
-      left: 10px;
-      background: white;
-      padding: 10px;
-      font-size: 13px;
-      z-index: 999;
-      border: 1px solid #ccc;
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .leaflet-popup-content select,
+    .leaflet-popup-content textarea {
+      width: 100%;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div class="legend">
-    <b>Lead Status</b><br>
-    <span style="color:#999999;">⬤</span> Not Interested<br>
-    <span style="color:#FFA500;">⬤</span> Follow Up<br>
-    <span style="color:#00AA00;">⬤</span> On Hold<br>
-    <span style="color:#0077CC;">⬤</span> Conversion<br>
-    <span style="color:#888888;">⬤</span> New / Other<br><br>
-    <a href="master.html" target="_blank">📊 View Master Table</a><br>
-    <a href="notes.html?uid=parcel_00000" target="_blank">📝 View Parcel Notes</a>
-  </div>
+<div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, set, push, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
+<script src="firebase-config.js"></script>
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+<script>
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const map = L.map('map').setView([39.8, -89.6], 7);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri',
-      maxZoom: 19
-    }).addTo(map);
+const map = L.map('map').setView([40, -89], 7);
 
-    const colors = {
-      "Not Interested": "#999999",
-      "Follow Up 1": "#FFA500", "Follow Up 2": "#FFA500", "Follow Up 3": "#FFA500",
-      "On Hold": "#00AA00",
-      "Conversion": "#0077CC",
-      "New": "#888888", "New with Contact": "#888888"
-    };
+L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+  maxZoom: 20,
+  subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+}).addTo(map);
 
-    const statusList = [
-      "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
-      "On Hold", "Not Interested", "Conversion"
-    ];
-
-    const geojsonFile = await fetch("geojson_filename.txt").then(r => r.text());
-    const data = await fetch(geojsonFile.trim()).then(r => r.json());
-
-    const geoLayer = L.geoJSON(data, {
-      style: feature => ({
-        color: colors[feature.properties.Status] || "#555",
-        weight: 2,
-        fillOpacity: 0.7
-      }),
-      onEachFeature: (feature, layer) => {
-        const props = feature.properties || {};
-        const uid = props.uid;
-        const center = layer.getBounds().getCenter();
-
-        const popup = L.DomUtil.create('div');
-        const table = L.DomUtil.create('table', '', popup);
-        for (const key in props) {
-          if (key !== 'searchable') {
-            table.innerHTML += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-          }
-        }
-
-        const noteBox = L.DomUtil.create('textarea', '', popup);
-        noteBox.rows = 3;
-        noteBox.placeholder = "Leave a note...";
-
-        const statusDropdown = L.DomUtil.create('select', '', popup);
-        statusList.forEach(opt => {
-          const option = new Option(opt, opt);
-          if (opt === props.Status) option.selected = true;
-          statusDropdown.add(option);
-        });
-
-        const saveBtn = L.DomUtil.create('button', '', popup);
-        saveBtn.innerText = "Save Note & Status";
-        saveBtn.onclick = () => {
-          const note = noteBox.value.trim();
-          const newStatus = statusDropdown.value;
-          const updates = {};
-
-          if (note) {
-            push(ref(db, `parcel_${uid}/notes`), {
-              text: note,
-              timestamp: new Date().toISOString(),
-              status: newStatus,
-              source: "popup"
-            });
-          }
-
-          updates[`parcel_${uid}/status`] = newStatus;
-          update(ref(db), updates).then(() => {
-            props.Status = newStatus;
-            layer.setStyle({ color: colors[newStatus] || "#444" });
-            noteBox.value = '';
-          });
+fetch("geojson_filename.txt")
+  .then(response => response.text())
+  .then(filename => fetch(filename.trim()))
+  .then(response => response.json())
+  .then(data => {
+    const geojsonLayer = L.geoJSON(data, {
+      style: feature => {
+        const status = feature.properties.Status || "New";
+        const colorMap = {
+          "New": "gray", "New with Contact": "blue", "Follow Up 1": "orange",
+          "Follow Up 2": "orange", "Follow Up 3": "orange", "On Hold": "purple",
+          "Unqualified": "red", "Not Interested": "black", "Research Needed": "pink",
+          "Research Completed": "green", "No Response": "lightblue",
+          "RR2": "yellow", "RC2": "yellow", "Unable To Contact": "brown", "Conversion": "gold"
         };
+        return { color: colorMap[status] || "gray", weight: 2 };
+      },
+      onEachFeature: onEachFeature
+    }).addTo(map);
 
-        const notesLink = L.DomUtil.create('a', '', popup);
-        notesLink.href = `notes.html?uid=parcel_${uid}`;
-        notesLink.target = "_blank";
-        notesLink.innerText = "🔗 View Notes";
+    map.fitBounds(geojsonLayer.getBounds());
 
-        popup.appendChild(document.createElement("br"));
-        popup.appendChild(statusDropdown);
-        popup.appendChild(document.createElement("br"));
-        popup.appendChild(noteBox);
-        popup.appendChild(document.createElement("br"));
-        popup.appendChild(saveBtn);
-        popup.appendChild(document.createElement("br"));
-        popup.appendChild(notesLink);
-
-        layer.bindPopup(popup);
+    const searchControl = new L.Control.Search({
+      layer: geojsonLayer,
+      propertyName: "_searchable",
+      marker: false,
+      moveToLocation: (latlng, title, map) => {
+        map.setView(latlng, 17);
       }
-    }).addTo(map);
+    });
 
-    map.fitBounds(geoLayer.getBounds());
+    searchControl.on('search:locationfound', e => {
+      if (!e.layer._popup) return;
+      e.layer.openPopup();
+      L.circleMarker(e.latlng, {
+        radius: 10, color: 'red', weight: 3, fill: false
+      }).addTo(map);
+    });
 
-    new L.Control.Search({
-      layer: geoLayer,
-      propertyName: '', // search all fields
-      textPlaceholder: 'Search parcels...',
-      sourceData: function (text, callResponse) {
-        const results = {};
-        geoLayer.eachLayer(layer => {
-          const props = layer.feature?.properties || {};
-          const match = Object.values(props).some(value =>
-            String(value).toLowerCase().includes(text.toLowerCase()));
-          if (match) {
-            const label = Object.values(props).join(' | ');
-            results[label] = layer.getBounds().getCenter();
-          }
-        });
-        callResponse(results);
-      },
-      marker: {
-        icon: new L.Icon.Default(),
-        animate: true,
-        circleLocation: false
-      },
-      zoom: 16
-    }).addTo(map);
-  </script>
+    map.addControl(searchControl);
+  });
+
+function onEachFeature(feature, layer) {
+  const props = feature.properties;
+  if (!props.uid) return;
+
+  let content = `<b>Project: ${props.Source || "N/A"}</b><br><hr>`;
+
+  for (let key in props) {
+    if (key !== "_searchable" && key !== "uid") {
+      content += `<b>${key}</b>: ${props[key]}<br>`;
+    }
+  }
+
+  const uid = props.uid;
+  const currentStatus = props.Status || "New";
+
+  content += `
+    <hr>
+    <label><b>Lead Status:</b></label>
+    <select id="status-${uid}">
+      ${[
+        "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
+        "On Hold", "Unqualified", "Not Interested", "Research Needed",
+        "Research Completed", "No Response", "RR2", "RC2",
+        "Unable To Contact", "Conversion"
+      ].map(status =>
+        `<option value="${status}" ${status === currentStatus ? "selected" : ""}>${status}</option>`
+      ).join("")}
+    </select>
+    <button onclick="saveStatus('${uid}', this)">Save</button><br><br>
+
+    <label><b>Add Note:</b></label><br>
+    <textarea id="note-${uid}" rows="3"></textarea><br>
+    <button onclick="saveNote('${uid}')">Submit Note</button>
+  `;
+
+  layer.bindPopup(content);
+}
+
+function saveStatus(uid, btn) {
+  const newStatus = document.getElementById(`status-${uid}`).value;
+  db.ref("status/" + uid).set(newStatus, (error) => {
+    if (!error) {
+      alert("Status updated!");
+      btn.innerText = "Saved!";
+      setTimeout(() => btn.innerText = "Save", 1000);
+    } else {
+      alert("Error saving status.");
+    }
+  });
+}
+
+function saveNote(uid) {
+  const note = document.getElementById(`note-${uid}`).value;
+  if (!note.trim()) return alert("Note is empty.");
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time: timestamp }, (error) => {
+    if (!error) {
+      alert("Note saved!");
+      document.getElementById(`note-${uid}`).value = "";
+    } else {
+      alert("Error saving note.");
+    }
+  });
+}
+</script>
 </body>
 </html>

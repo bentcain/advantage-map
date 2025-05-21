@@ -1,71 +1,61 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Parcel Notes Dashboard</title>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
+  <title>Parcel Notes Viewer</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 2em; }
-    .note { margin-bottom: 1em; padding: 1em; border: 1px solid #ccc; }
-    .note small { color: #666; display: block; margin-top: 0.5em; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { margin: 5px 0; }
+    li { margin-bottom: 8px; }
   </style>
 </head>
 <body>
-  <h2>📋 Parcel Notes Dashboard</h2>
-  <div id="info">Loading...</div>
+  <h2>View Notes for a Parcel</h2>
+  <label>Enter UID:</label><br>
+  <input type="text" id="uidInput" placeholder="e.g. 1234-5678-UID" />
+  <button onclick="loadNotes()">Load Notes</button>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+  <ul id="notesList"></ul>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+function loadNotes() {
+  const uid = document.getElementById("uidInput").value.trim();
+  const list = document.getElementById("notesList");
+  list.innerHTML = "";
 
-    const uid = new URLSearchParams(window.location.search).get("uid");
-    const info = document.getElementById("info");
+  if (!uid) {
+    alert("Please enter a UID.");
+    return;
+  }
 
-    if (!uid) {
-      info.innerHTML = "❌ No UID specified in URL. Use ?uid=parcel_XXXXX";
-      throw new Error("Missing UID");
+  db.ref("notes/" + uid).once("value", (snapshot) => {
+    if (!snapshot.exists()) {
+      list.innerHTML = "<li>No notes found for this UID.</li>";
+      return;
     }
 
-    const parcelRef = ref(db, uid);
-    onValue(parcelRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        info.innerHTML = "No notes found for " + uid;
-        return;
-      }
-
-      const { status = "Unknown", notes = {} } = data;
-      const entries = Object.values(notes).sort((a, b) =>
-        (b.timestamp || "").localeCompare(a.timestamp || "")
-      );
-
-      let html = `<p><b>Parcel:</b> ${uid}</p>`;
-      html += `<p><b>Current Status:</b> ${status}</p>`;
-      html += `<h3>📌 Note History</h3>`;
-      if (entries.length === 0) {
-        html += `<p>No notes yet.</p>`;
-      } else {
-        entries.forEach(note => {
-          html += `<div class="note"><b>${note.status}</b>: ${note.text}<small>${note.timestamp}</small></div>`;
-        });
-      }
-
-      info.innerHTML = html;
-    }, {
-      onlyOnce: false
+    snapshot.forEach(child => {
+      const note = child.val();
+      const li = document.createElement("li");
+      li.innerHTML = `<strong>${new Date(note.time).toLocaleString()}:</strong> ${note.text}`;
+      list.appendChild(li);
     });
-  </script>
+  });
+}
+</script>
 </body>
 </html>

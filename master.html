@@ -1,161 +1,90 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Parcel Master Spreadsheet</title>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
+  <title>Master Parcel Dashboard</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <style>
-    table { width: 100%; border-collapse: collapse; }
-    td, th { border: 1px solid #ccc; padding: 5px; font-size: 12px; }
-    th { background: #f0f0f0; }
-    textarea { width: 100%; }
-    select { width: 100%; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f0f0f0; }
+    td.notes { font-size: 0.9em; color: #333; }
   </style>
 </head>
 <body>
-  <h2>📊 Parcel Master Spreadsheet</h2>
-  <p>This dashboard shows all parcels, notes, status, and allows full table interaction.</p>
-  <div id="table-container">Loading...</div>
+  <h2>Master Parcel Dashboard</h2>
+  <table id="parcelTable">
+    <thead>
+      <tr>
+        <th>UID</th>
+        <th>Status</th>
+        <th>Latest Note</th>
+        <th>All Notes</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue, push, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      measurementId: "G-GQ3CQ9EKPH",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
+function loadDashboard() {
+  const tableBody = document.querySelector("#parcelTable tbody");
+  tableBody.innerHTML = "";
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+  const statusRef = db.ref("status/");
+  const notesRef = db.ref("notes/");
 
-    const uidMap = await fetch('uid_map.json').then(r => r.json());
-    const geojsonFile = await fetch('geojson_filename.txt').then(r => r.text());
-    const geojson = await fetch(geojsonFile.trim()).then(r => r.json());
+  Promise.all([
+    statusRef.once("value"),
+    notesRef.once("value")
+  ]).then(([statusSnap, notesSnap]) => {
+    const allUIDs = new Set([
+      ...Object.keys(statusSnap.val() || {}),
+      ...Object.keys(notesSnap.val() || {})
+    ]);
 
-    const container = document.getElementById("table-container");
-    const table = document.createElement("table");
-    const headerRow = document.createElement("tr");
+    allUIDs.forEach(uid => {
+      const status = statusSnap.val()?.[uid] || "New";
+      const notes = notesSnap.val()?.[uid] || {};
+      const noteKeys = Object.keys(notes);
 
-    const allKeys = new Set();
-    geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
-    const dynamicFields = Array.from(allKeys);
+      let latestNote = "";
+      let fullNotes = "";
 
-    const headers = [...dynamicFields, "UID", "Status", "New Note", "Submit", "Note History", "Actions"];
-    headers.forEach(h => {
-      const th = document.createElement("th");
-      th.textContent = h;
-      headerRow.appendChild(th);
-    });
-    table.appendChild(headerRow);
+      if (noteKeys.length > 0) {
+        noteKeys.sort((a, b) => new Date(notes[a].time) - new Date(notes[b].time));
+        latestNote = notes[noteKeys[noteKeys.length - 1]].text;
+        fullNotes = noteKeys.map(k =>
+          `<div><strong>${new Date(notes[k].time).toLocaleString()}:</strong> ${notes[k].text}</div>`
+        ).join("");
+      }
 
-    geojson.features.forEach(feature => {
       const row = document.createElement("tr");
-      const uid = feature.properties.uid || "";
-      const firebasePath = `parcel_${uid}`;
-
-      // Dynamic property columns
-      dynamicFields.forEach(key => {
-        const td = document.createElement("td");
-        td.textContent = feature.properties[key] || "";
-        row.appendChild(td);
-      });
-
-      // UID cell
-      const uidCell = document.createElement("td");
-      uidCell.textContent = firebasePath;
-      row.appendChild(uidCell);
-
-      // Status dropdown
-      const statusCell = document.createElement("td");
-      const dropdown = document.createElement("select");
-      const statusOptions = [
-        "New", "New with Contact",
-        "Follow Up 1", "Follow Up 2", "Follow Up 3",
-        "On Hold", "Not Interested", "Conversion"
-      ];
-      statusOptions.forEach(opt => {
-        const option = new Option(opt, opt);
-        dropdown.add(option);
-      });
-      statusCell.appendChild(dropdown);
-      row.appendChild(statusCell);
-
-      // Note input
-      const noteCell = document.createElement("td");
-      const noteBox = document.createElement("textarea");
-      noteBox.rows = 2;
-      noteCell.appendChild(noteBox);
-      row.appendChild(noteCell);
-
-      // Submit button
-      const submitCell = document.createElement("td");
-      const saveBtn = document.createElement("button");
-      saveBtn.textContent = "Save";
-      saveBtn.onclick = () => {
-        const noteText = noteBox.value.trim();
-        const newStatus = dropdown.value;
-        if (!noteText && !newStatus) return;
-
-        if (noteText) {
-          push(ref(db, `${firebasePath}/notes`), {
-            text: noteText,
-            timestamp: new Date().toISOString(),
-            status: newStatus,
-            source: "master"
-          });
-        }
-
-        if (newStatus) {
-          update(ref(db), { [`${firebasePath}/status`]: newStatus });
-        }
-
-        noteBox.value = "";
-        alert("Saved!");
-      };
-      submitCell.appendChild(saveBtn);
-      row.appendChild(submitCell);
-
-      // Note history
-      const historyCell = document.createElement("td");
-      row.appendChild(historyCell);
-
-      // Actions (Zoom & Notes View)
-      const actionCell = document.createElement("td");
-      actionCell.innerHTML = `
-        <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
-        <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
+      row.innerHTML = `
+        <td>${uid}</td>
+        <td>${status}</td>
+        <td>${latestNote}</td>
+        <td class="notes">${fullNotes}</td>
       `;
-      row.appendChild(actionCell);
-
-      table.appendChild(row);
-
-      // Firebase Sync
-      onValue(ref(db, firebasePath), (snapshot) => {
-        const data = snapshot.val() || {};
-        const currentStatus = data.status || "";
-        if (statusOptions.includes(currentStatus)) dropdown.value = currentStatus;
-
-        const notes = data.notes || {};
-        const entries = Object.values(notes).sort((a, b) =>
-          (b.timestamp || "").localeCompare(a.timestamp || "")
-        );
-
-        let history = "";
-        entries.forEach(note => {
-          history += `<b>${note.status}</b>: ${note.text}<br><small>${note.timestamp}</small><br><br>`;
-        });
-        historyCell.innerHTML = history || "—";
-      });
+      tableBody.appendChild(row);
     });
+  });
+}
 
-    container.innerHTML = "";
-    container.appendChild(table);
-  </script>
+window.onload = loadDashboard;
+</script>
 </body>
 </html>
