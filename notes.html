@@ -1,134 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
   <title>Parcel Notes Dashboard</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-  <script src="firebase-config.js"></script>
+  <meta charset="utf-8" />
   <style>
-    body {
-      font-family: sans-serif;
-      margin: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 6px;
-    }
-    textarea {
-      width: 98%;
-    }
-    select {
-      width: 100%;
-    }
+    body { font-family: sans-serif; margin: 2em; }
+    .note { margin-bottom: 1em; padding: 1em; border: 1px solid #ccc; }
+    .note small { color: #666; display: block; margin-top: 0.5em; }
   </style>
 </head>
 <body>
-  <h2>Parcel Notes Dashboard</h2>
-  <table id="notesTable">
-    <thead>
-      <tr>
-        <th>UID</th>
-        <th>Status</th>
-        <th>New Note</th>
-        <th>Submit</th>
-        <th>Note History</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <h2>📋 Parcel Notes Dashboard</h2>
+  <div id="info">Loading...</div>
 
-  <script>
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 
-    const uidParam = new URLSearchParams(window.location.search).get("uid");
-    const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+      authDomain: "parcel-notes-system.firebaseapp.com",
+      projectId: "parcel-notes-system",
+      storageBucket: "parcel-notes-system.appspot.com",
+      messagingSenderId: "538142262863",
+      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
+    };
 
-    function renderRow(uid, data) {
-      const row = document.createElement("tr");
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-      // UID
-      const uidCell = document.createElement("td");
-      uidCell.textContent = uid;
-      row.appendChild(uidCell);
+    const uid = new URLSearchParams(window.location.search).get("uid");
+    const info = document.getElementById("info");
 
-      // Status dropdown
-      const statusCell = document.createElement("td");
-      const statusSelect = document.createElement("select");
-      statusOptions.forEach(option => {
-        const opt = document.createElement("option");
-        opt.value = option;
-        opt.textContent = option;
-        if (data.status === option) opt.selected = true;
-        statusSelect.appendChild(opt);
-      });
-      statusCell.appendChild(statusSelect);
-      row.appendChild(statusCell);
-
-      // Note entry
-      const noteCell = document.createElement("td");
-      const noteInput = document.createElement("textarea");
-      noteCell.appendChild(noteInput);
-      row.appendChild(noteCell);
-
-      // Submit button
-      const saveCell = document.createElement("td");
-      const saveBtn = document.createElement("button");
-      saveBtn.textContent = "Save";
-      saveBtn.onclick = () => {
-        const updates = {
-          status: statusSelect.value
-        };
-        if (noteInput.value.trim()) {
-          const newNote = {
-            text: noteInput.value.trim(),
-            user: "Ben",
-            timestamp: new Date().toISOString()
-          };
-          db.ref(uid).child("notes").once("value").then(snapshot => {
-            const notes = snapshot.val() || [];
-            notes.push(newNote);
-            db.ref(uid).update({
-              status: statusSelect.value,
-              notes: notes
-            });
-            alert("Note saved!");
-            location.reload();
-          });
-        } else {
-          db.ref(uid).update({ status: statusSelect.value });
-          alert("Status updated.");
-          location.reload();
-        }
-      };
-      saveCell.appendChild(saveBtn);
-      row.appendChild(saveCell);
-
-      // Note history
-      const historyCell = document.createElement("td");
-      const notes = data.notes || [];
-      if (notes.length === 0) {
-        historyCell.innerHTML = "<em>No notes</em>";
-      } else {
-        historyCell.innerHTML = notes.map(note =>
-          `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
-        ).join("");
-      }
-      row.appendChild(historyCell);
-
-      document.querySelector("#notesTable tbody").appendChild(row);
+    if (!uid) {
+      info.innerHTML = "❌ No UID specified in URL. Use ?uid=parcel_XXXXX";
+      throw new Error("Missing UID");
     }
 
-    db.ref().once("value").then(snapshot => {
-      const all = snapshot.val() || {};
-      const filtered = uidParam ? { [uidParam]: all[uidParam] } : all;
-      Object.entries(filtered).forEach(([uid, data]) => renderRow(uid, data));
+    const parcelRef = ref(db, uid);
+    onValue(parcelRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        info.innerHTML = "No notes found for " + uid;
+        return;
+      }
+
+      const { status = "Unknown", notes = {} } = data;
+      const entries = Object.values(notes).sort((a, b) =>
+        (b.timestamp || "").localeCompare(a.timestamp || "")
+      );
+
+      let html = `<p><b>Parcel:</b> ${uid}</p>`;
+      html += `<p><b>Current Status:</b> ${status}</p>`;
+      html += `<h3>📌 Note History</h3>`;
+      if (entries.length === 0) {
+        html += `<p>No notes yet.</p>`;
+      } else {
+        entries.forEach(note => {
+          html += `<div class="note"><b>${note.status}</b>: ${note.text}<small>${note.timestamp}</small></div>`;
+        });
+      }
+
+      info.innerHTML = html;
+    }, {
+      onlyOnce: false
     });
   </script>
 </body>

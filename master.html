@@ -4,22 +4,21 @@
   <title>Parcel Master Spreadsheet</title>
   <meta charset="utf-8" />
   <style>
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 6px;
-      border: 1px solid #ccc;
-      vertical-align: top;
-    }
-    textarea {
-      width: 95%;
-    }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border: 1px solid #ccc; padding: 5px; font-size: 12px; }
+    th { background: #f0f0f0; }
+    textarea { width: 100%; }
+    select { width: 100%; }
   </style>
+</head>
+<body>
+  <h2>📊 Parcel Master Spreadsheet</h2>
+  <p>This dashboard shows all parcels, notes, status, and allows full table interaction.</p>
+  <div id="table-container">Loading...</div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+    import { getDatabase, ref, onValue, push, update } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
@@ -35,138 +34,128 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    try {
-      const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
-      console.log("✅ GeoJSON filename loaded:", geojsonFilename.trim());
+    const uidMap = await fetch('uid_map.json').then(r => r.json());
+    const geojsonFile = await fetch('geojson_filename.txt').then(r => r.text());
+    const geojson = await fetch(geojsonFile.trim()).then(r => r.json());
 
-      const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
-      console.log("✅ GeoJSON data loaded. Features:", geojson.features.length);
+    const container = document.getElementById("table-container");
+    const table = document.createElement("table");
+    const headerRow = document.createElement("tr");
 
-      const uidMap = await fetch("uid_map.json").then(r => r.json());
-      console.log("✅ UID Map loaded. Keys:", Object.keys(uidMap).length);
+    const allKeys = new Set();
+    geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
+    const dynamicFields = Array.from(allKeys);
 
-      const table = document.createElement("table");
-      const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
+    const headers = [...dynamicFields, "UID", "Status", "New Note", "Submit", "Note History", "Actions"];
+    headers.forEach(h => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    table.appendChild(headerRow);
 
-      const allKeys = new Set();
-      geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
-      const dynamicFields = Array.from(allKeys).sort();
-      dynamicFields.forEach(k => headers.unshift(k)); // Add before UID
+    geojson.features.forEach(feature => {
+      const row = document.createElement("tr");
+      const uid = feature.properties.uid || "";
+      const firebasePath = `parcel_${uid}`;
 
-      const headerRow = document.createElement("tr");
-      headers.forEach(h => {
-        const th = document.createElement("th");
-        th.textContent = h;
-        headerRow.appendChild(th);
+      // Dynamic property columns
+      dynamicFields.forEach(key => {
+        const td = document.createElement("td");
+        td.textContent = feature.properties[key] || "";
+        row.appendChild(td);
       });
-      table.appendChild(headerRow);
 
-      geojson.features.forEach(feature => {
-        const row = document.createElement("tr");
-        const uid = feature.properties.uid || "";
-        const firebasePath = `parcel_${uid}`;
+      // UID cell
+      const uidCell = document.createElement("td");
+      uidCell.textContent = firebasePath;
+      row.appendChild(uidCell);
 
-        // Add dynamic fields
-        dynamicFields.forEach(k => {
-          const td = document.createElement("td");
-          td.textContent = feature.properties[k] || "";
-          row.appendChild(td);
-        });
+      // Status dropdown
+      const statusCell = document.createElement("td");
+      const dropdown = document.createElement("select");
+      const statusOptions = [
+        "New", "New with Contact",
+        "Follow Up 1", "Follow Up 2", "Follow Up 3",
+        "On Hold", "Not Interested", "Conversion"
+      ];
+      statusOptions.forEach(opt => {
+        const option = new Option(opt, opt);
+        dropdown.add(option);
+      });
+      statusCell.appendChild(dropdown);
+      row.appendChild(statusCell);
 
-        const uidCell = document.createElement("td");
-        uidCell.textContent = firebasePath;
-        row.appendChild(uidCell);
+      // Note input
+      const noteCell = document.createElement("td");
+      const noteBox = document.createElement("textarea");
+      noteBox.rows = 2;
+      noteCell.appendChild(noteBox);
+      row.appendChild(noteCell);
 
-        const statusCell = document.createElement("td");
-        const statusDropdown = document.createElement("select");
-        const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
-        statusOptions.forEach(opt => {
-          const o = document.createElement("option");
-          o.value = opt;
-          o.textContent = opt;
-          statusDropdown.appendChild(o);
-        });
-        statusCell.appendChild(statusDropdown);
-        row.appendChild(statusCell);
+      // Submit button
+      const submitCell = document.createElement("td");
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Save";
+      saveBtn.onclick = () => {
+        const noteText = noteBox.value.trim();
+        const newStatus = dropdown.value;
+        if (!noteText && !newStatus) return;
 
-        const noteInput = document.createElement("textarea");
-        noteInput.rows = 2;
-        noteInput.cols = 30;
-        const noteCell = document.createElement("td");
-        noteCell.appendChild(noteInput);
-        row.appendChild(noteCell);
-
-        const saveBtn = document.createElement("button");
-        saveBtn.textContent = "Save";
-        const submitCell = document.createElement("td");
-        submitCell.appendChild(saveBtn);
-        row.appendChild(submitCell);
-
-        const historyCell = document.createElement("td");
-        row.appendChild(historyCell);
-
-        const actionCell = document.createElement("td");
-        actionCell.innerHTML = `
-          <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
-          <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
-        `;
-        row.appendChild(actionCell);
-
-        saveBtn.onclick = () => {
-          const newNote = noteInput.value.trim();
-          const newStatus = statusDropdown.value;
-
-          if (newNote) {
-            push(ref(db, `${firebasePath}/notes`), {
-              text: newNote,
-              timestamp: new Date().toISOString(),
-              status: newStatus,
-              source: "master"
-            });
-            console.log(`📝 Note saved for ${firebasePath}: ${newNote}`);
-          }
-
-          update(ref(db), {
-            [`${firebasePath}/status`]: newStatus
+        if (noteText) {
+          push(ref(db, `${firebasePath}/notes`), {
+            text: noteText,
+            timestamp: new Date().toISOString(),
+            status: newStatus,
+            source: "master"
           });
+        }
 
-          alert("✅ Saved!");
-          noteInput.value = "";
-        };
+        if (newStatus) {
+          update(ref(db), { [`${firebasePath}/status`]: newStatus });
+        }
 
-        onValue(ref(db, firebasePath), (snapshot) => {
-          const data = snapshot.val() || {};
-          const currentStatus = data.status;
-          if (statusOptions.includes(currentStatus)) {
-            statusDropdown.value = currentStatus;
-          }
+        noteBox.value = "";
+        alert("Saved!");
+      };
+      submitCell.appendChild(saveBtn);
+      row.appendChild(submitCell);
 
-          const notes = data.notes || [];
-          const noteList = Object.values(notes).sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
-          const historyHtml = noteList.map(n =>
-            `<b>${n.status}</b>: ${n.text} <br><small>${n.timestamp}</small><br><br>`
-          ).join("");
+      // Note history
+      const historyCell = document.createElement("td");
+      row.appendChild(historyCell);
 
-          historyCell.innerHTML = historyHtml || "—";
+      // Actions (Zoom & Notes View)
+      const actionCell = document.createElement("td");
+      actionCell.innerHTML = `
+        <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
+        <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
+      `;
+      row.appendChild(actionCell);
+
+      table.appendChild(row);
+
+      // Firebase Sync
+      onValue(ref(db, firebasePath), (snapshot) => {
+        const data = snapshot.val() || {};
+        const currentStatus = data.status || "";
+        if (statusOptions.includes(currentStatus)) dropdown.value = currentStatus;
+
+        const notes = data.notes || {};
+        const entries = Object.values(notes).sort((a, b) =>
+          (b.timestamp || "").localeCompare(a.timestamp || "")
+        );
+
+        let history = "";
+        entries.forEach(note => {
+          history += `<b>${note.status}</b>: ${note.text}<br><small>${note.timestamp}</small><br><br>`;
         });
-
-        table.appendChild(row);
+        historyCell.innerHTML = history || "—";
       });
+    });
 
-      document.addEventListener("DOMContentLoaded", () => {
-        document.body.appendChild(table);
-      });
-
-    } catch (err) {
-      console.error("❌ ERROR in master.html script:", err);
-      const msg = document.createElement("p");
-      msg.textContent = "⚠️ Failed to load spreadsheet. Open console for details.";
-      document.body.appendChild(msg);
-    }
+    container.innerHTML = "";
+    container.appendChild(table);
   </script>
-</head>
-<body>
-  <h2>📊 Parcel Master Spreadsheet</h2>
-  <p>This dashboard shows all parcels, notes, status, and allows full table interaction.</p>
 </body>
 </html>
