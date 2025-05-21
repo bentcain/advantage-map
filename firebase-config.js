@@ -1,3 +1,4 @@
+// firebase-config.js
 export const firebaseConfig = {
   apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
   authDomain: "parcel-notes-system.firebaseapp.com",
