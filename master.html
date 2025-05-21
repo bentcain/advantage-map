@@ -1,171 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Master Parcel Dashboard</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input[type="text"] { margin-bottom: 10px; padding: 5px; width: 300px; font-size: 1em; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    th { background-color: #f0f0f0; }
-    select, textarea, button { font-size: 0.9em; width: 100%; margin-top: 4px; }
-    textarea { height: 50px; }
-  </style>
-</head>
-<body>
-  <h2>Master Parcel Dashboard</h2>
-  <input type="text" id="searchInput" placeholder="Search UID or note text..." oninput="filterTable()" />
+  <title>Parcel Master Spreadsheet</title>
+  <meta charset="utf-8" />
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
 
-  <table id="parcelTable">
-    <thead>
-      <tr>
-        <th>UID</th>
-        <th>Status</th>
-        <th>Latest Note</th>
-        <th>Full Note History</th>
-        <th>New Note</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-  authDomain: "parcel-notes-system.firebaseapp.com",
-  projectId: "parcel-notes-system",
-  storageBucket: "parcel-notes-system.appspot.com",
-  messagingSenderId: "538142262863",
-  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-  measurementId: "G-GQ3CQ9EKPH",
-  databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-let masterData = [];
-
-function loadDashboard() {
-  const tableBody = document.querySelector("#parcelTable tbody");
-  tableBody.innerHTML = "";
-
-  const statusRef = db.ref("status/");
-  const notesRef = db.ref("notes/");
-
-  Promise.all([
-    statusRef.once("value"),
-    notesRef.once("value")
-  ]).then(([statusSnap, notesSnap]) => {
-    const statuses = statusSnap.val() || {};
-    const notes = notesSnap.val() || {};
-    const allUIDs = new Set([...Object.keys(statuses), ...Object.keys(notes)]);
-
-    const rows = [];
-
-    allUIDs.forEach(uid => {
-      const status = statuses[uid] || "New";
-      const noteGroup = notes[uid] || {};
-      const noteKeys = Object.keys(noteGroup).sort((a, b) =>
-        new Date(noteGroup[a].time) - new Date(noteGroup[b].time)
-      );
-      const latestNote = noteKeys.length > 0 ? noteGroup[noteKeys[noteKeys.length - 1]].text : "";
-      const fullNotes = noteKeys.map(k =>
-        `<div><strong>${new Date(noteGroup[k].time).toLocaleString()}:</strong> ${noteGroup[k].text}</div>`
-      ).join("");
-
-      rows.push({
-        uid,
-        status,
-        latestNote,
-        fullNotes
-      });
-    });
-
-    // Sort by custom priority
-    const priority = {
-      "Conversion": 1,
-      "Follow Up 1": 2, "Follow Up 2": 2, "Follow Up 3": 2,
-      "New": 3,
-      "Not Interested": 4,
-      "On Hold": 5
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+      authDomain: "parcel-notes-system.firebaseapp.com",
+      projectId: "parcel-notes-system",
+      storageBucket: "parcel-notes-system.appspot.com",
+      messagingSenderId: "538142262863",
+      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+      measurementId: "G-GQ3CQ9EKPH",
+      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
     };
 
-    rows.sort((a, b) => {
-      const prioA = priority[a.status] || 99;
-      const prioB = priority[b.status] || 99;
-      return prioA - prioB;
-    });
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-    masterData = rows;
+    const uidMap = await fetch('uid_map.json').then(res => res.json());
+    const geojsonFilename = await fetch('geojson_filename.txt').then(r => r.text());
+    const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
 
-    renderTable(rows);
-  });
-}
-
-function renderTable(data) {
-  const tableBody = document.querySelector("#parcelTable tbody");
-  tableBody.innerHTML = "";
-
-  data.forEach(row => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${row.uid}</td>
-      <td>
-        <select onchange="updateStatus('${row.uid}', this)">
-          ${[
-            "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
-            "On Hold", "Unqualified", "Not Interested", "Research Needed",
-            "Research Completed", "No Response", "RR2", "RC2",
-            "Unable To Contact", "Conversion"
-          ].map(s => `<option value="${s}" ${s === row.status ? "selected" : ""}>${s}</option>`).join("")}
-        </select>
-      </td>
-      <td>${row.latestNote}</td>
-      <td>${row.fullNotes}</td>
-      <td>
-        <textarea id="note-${row.uid}" placeholder="Add a note..."></textarea>
-        <button onclick="saveNote('${row.uid}')">Submit</button>
-      </td>
-    `;
-    tableBody.appendChild(tr);
-  });
-}
-
-function updateStatus(uid, select) {
-  const value = select.value;
-  db.ref("status/" + uid).set(value, err => {
-    if (!err) alert("Status updated.");
-  });
-}
-
-function saveNote(uid) {
-  const box = document.getElementById(`note-${uid}`);
-  const text = box.value.trim();
-  if (!text) return alert("Note is empty.");
-  const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text, time }, err => {
-    if (!err) {
-      alert("Note saved.");
-      box.value = "";
-      loadDashboard();
-    }
-  });
-}
-
-function filterTable() {
-  const query = document.getElementById("searchInput").value.toLowerCase();
-  const filtered = masterData.filter(row =>
-    row.uid.toLowerCase().includes(query) ||
-    row.latestNote.toLowerCase().includes(query) ||
-    row.fullNotes.toLowerCase().includes(query)
-  );
-  renderTable(filtered);
-}
-
-window.onload = loadDashboard;
-</script>
-</body>
-</html>
+    const container = document.createElement("table");
+    container.border = 

@@ -2,161 +2,190 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Advantage Interactive Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
+  <title>Interactive Parcel Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet Core -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+  <!-- Leaflet Search -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
+
+  <script type="module" src="firebase-config.js"></script>
+
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    html, body, #map { height: 100%; margin: 0; }
+    .leaflet-popup-content { max-height: 300px; overflow-y: auto; }
     .legend {
-      position: absolute;
-      bottom: 30px;
-      left: 10px;
       background: white;
-      padding: 10px;
-      border: 1px solid #ccc;
-      font-size: 12px;
-      z-index: 1000;
+      line-height: 1.5;
+      padding: 6px 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
     }
-    .legend div { margin-bottom: 4px; }
+    .legend i {
+      width: 14px;
+      height: 14px;
+      float: left;
+      margin-right: 8px;
+      opacity: 0.8;
+    }
+    .leaflet-control-search {
+      max-width: 300px;
+    }
   </style>
 </head>
 <body>
-<div id="map"></div>
-<div class="legend" id="legend"></div>
+  <div id="map"></div>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+    import { firebaseConfig } from './firebase-config.js';
 
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
-<script src="firebase-config.js"></script>
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-<script>
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+    const map = L.map('map').setView([39.8, -89.6], 7);
 
-const map = L.map('map').setView([40, -89], 7);
-L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-  maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-}).addTo(map);
-
-const colorMap = {
-  "Conversion": "gold", "Follow Up 1": "orange", "Follow Up 2": "orange", "Follow Up 3": "orange",
-  "New": "gray", "Not Interested": "black", "On Hold": "purple", "New with Contact": "blue",
-  "Unqualified": "red", "Research Needed": "pink", "Research Completed": "green",
-  "No Response": "lightblue", "RR2": "yellow", "RC2": "yellow", "Unable To Contact": "brown"
-};
-
-function updateLegend() {
-  const grouped = {
-    "Conversion": "gold",
-    "Follow Up": "orange",
-    "New": "gray",
-    "Not Interested": "black",
-    "On Hold": "purple"
-  };
-  const legendDiv = document.getElementById("legend");
-  legendDiv.innerHTML = "<b>Lead Status</b><br>";
-  for (let status in grouped) {
-    legendDiv.innerHTML += `<div><span style="background:${grouped[status]};width:10px;height:10px;display:inline-block;margin-right:5px;"></span>${status}</div>`;
-  }
-}
-
-updateLegend();
-
-fetch("geojson_filename.txt")
-  .then(r => r.text())
-  .then(filename => fetch(filename.replace(/\r?\n|\r/g, '').trim()))
-  .then(r => r.json())
-  .then(data => {
-    const geojson = L.geoJSON(data, {
-      onEachFeature: onEachFeature,
-      style: feature => ({
-        color: colorMap[feature.properties.Status] || "gray",
-        weight: 2
-      })
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri',
+      maxZoom: 19
     }).addTo(map);
 
-    const labelLayer = L.geoJSON(data, {
-      pointToLayer: (f, latlng) => {
-        const label = f.properties["Project ID"] || "";
-        return L.marker(latlng, {
-          icon: L.divIcon({
-            className: "label",
-            html: `<div style="font-size:10px; background:white; padding:1px;">${label}</div>`
-          })
+    const statusColors = {
+      "New": "#808080",
+      "New with Contact": "#A9A9A9",
+      "Follow Up 1": "#FFA500",
+      "Follow Up 2": "#FFA500",
+      "Follow Up 3": "#FFA500",
+      "On Hold": "#008000",
+      "Not Interested": "#8B0000",
+      "Conversion": "#0000FF"
+    };
+
+    const getStatusColor = (status) => {
+      if (status?.startsWith("Follow Up")) return "#FFA500";
+      return statusColors[status] || "#808080";
+    };
+
+    fetch('geojson_filename.txt')
+      .then(res => res.text())
+      .then(filename => fetch(filename.trim()))
+      .then(res => res.json())
+      .then(geojson => {
+        const geoLayer = L.geoJSON(geojson, {
+          style: feature => ({
+            color: getStatusColor(feature.properties?.Status),
+            weight: 2,
+            fillOpacity: 0.5
+          }),
+          onEachFeature: (feature, layer) => {
+            const props = feature.properties || {};
+            const uid = props.uid;
+            const firebasePath = `parcel_${uid}`;
+            const center = layer.getBounds().getCenter();
+            let popupContent = `<table>`;
+            for (const key in props) {
+              if (key.toLowerCase() !== "searchable") {
+                popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+              }
+            }
+
+            // Dropdown + Note + Links
+            popupContent += `
+              <tr><td><strong>Update Status</strong></td>
+                <td>
+                  <select id="statusDropdown_${uid}">
+                    ${Object.keys(statusColors).map(s => `<option value="${s}">${s}</option>`).join("")}
+                  </select>
+                </td>
+              </tr>
+              <tr><td><strong>Leave a Note</strong></td>
+                <td><textarea id="noteInput_${uid}" rows="2" cols="30"></textarea></td>
+              </tr>
+              <tr><td colspan="2">
+                <button onclick="saveNote('${uid}')">Save</button>
+                <a href="notes.html?uid=parcel_${uid}" target="_blank">View Parcel Notes</a>
+              </td></tr>
+            </table>`;
+
+            layer.bindPopup(popupContent);
+
+            layer.on('popupopen', () => {
+              const dropdown = document.getElementById(`statusDropdown_${uid}`);
+              if (dropdown && props.Status) dropdown.value = props.Status;
+            });
+          }
+        }).addTo(map);
+
+        map.fitBounds(geoLayer.getBounds());
+
+        const searchControl = new L.Control.Search({
+          layer: geoLayer,
+          propertyName: '', 
+          marker: true,
+          moveToLocation: (latlng, title, map) => {
+            map.setView(latlng, 17);
+          },
+          sourceData: (text, callResponse) => {
+            const results = {};
+            geoLayer.eachLayer(layer => {
+              const props = layer.feature?.properties || {};
+              const match = Object.values(props).some(val =>
+                String(val).toLowerCase().includes(text.toLowerCase())
+              );
+              if (match) {
+                const label = Object.values(props).join(" | ");
+                results[label] = layer.getBounds().getCenter();
+              }
+            });
+            callResponse(results);
+          }
+        });
+        map.addControl(searchControl);
+
+        const legend = L.control({ position: 'bottomright' });
+        legend.onAdd = function () {
+          const div = L.DomUtil.create('div', 'legend');
+          div.innerHTML += `<b>Lead Status</b><br>`;
+          const grouped = {
+            "New": "#808080",
+            "New with Contact": "#A9A9A9",
+            "Follow Up": "#FFA500",
+            "On Hold": "#008000",
+            "Not Interested": "#8B0000",
+            "Conversion": "#0000FF"
+          };
+          for (const [label, color] of Object.entries(grouped)) {
+            div.innerHTML += `<i style="background:${color}"></i>${label}<br>`;
+          }
+          return div;
+        };
+        legend.addTo(map);
+      });
+
+    window.saveNote = (uid) => {
+      const dropdown = document.getElementById(`statusDropdown_${uid}`);
+      const noteInput = document.getElementById(`noteInput_${uid}`);
+      const newStatus = dropdown?.value || "New";
+      const noteText = noteInput?.value.trim() || "";
+
+      const updates = {};
+      updates[`parcel_${uid}/status`] = newStatus;
+      if (noteText) {
+        const noteRef = ref(db, `parcel_${uid}/notes`);
+        push(noteRef, {
+          text: noteText,
+          timestamp: new Date().toISOString(),
+          status: newStatus,
+          source: "popup"
         });
       }
-    }).addTo(map);
-
-    map.fitBounds(geojson.getBounds());
-
-    const search = new L.Control.Search({
-      layer: geojson,
-      propertyName: "_searchable",
-      marker: false,
-      moveToLocation: (latlng, title, map) => map.setView(latlng, 17)
-    });
-
-    search.on('search:locationfound', e => {
-      if (e.layer._popup) e.layer.openPopup();
-      L.circleMarker(e.latlng, { radius: 8, color: 'red', fill: false }).addTo(map);
-    });
-
-    map.addControl(search);
-  });
-
-function onEachFeature(feature, layer) {
-  const props = feature.properties;
-  if (!props.uid) return;
-
-  const name = props["Project ID"] || "Unnamed";
-  let popup = `<b>${name}</b><br><hr>`;
-  for (let key in props) {
-    if (key !== "_searchable" && key !== "uid") {
-      popup += `<b>${key}</b>: ${props[key]}<br>`;
-    }
-  }
-
-  const uid = props.uid;
-  const status = props.Status || "New";
-  popup += `
-    <hr>
-    <label><b>Status:</b></label>
-    <select id="status-${uid}">
-      ${Object.keys(colorMap).map(s => `<option ${s === status ? "selected" : ""}>${s}</option>`).join("")}
-    </select>
-    <button onclick="saveStatus('${uid}', this)">Save</button><br><br>
-
-    <label><b>Note:</b></label>
-    <textarea id="note-${uid}" rows="3"></textarea>
-    <button onclick="saveNote('${uid}')">Submit Note</button><br><br>
-
-    <a href="notes.html?uid=${uid}" target="_blank">📋 View Parcel Notes</a><br>
-    <a href="https://www.google.com/maps?q=&layer=c&cbll=${layer._latlng.lat},${layer._latlng.lng}" target="_blank">🌍 Street View</a>
-  `;
-
-  layer.bindPopup(popup);
-}
-
-function saveStatus(uid, btn) {
-  const value = document.getElementById(`status-${uid}`).value;
-  db.ref("status/" + uid).set(value, err => {
-    if (!err) {
-      btn.innerText = "Saved!";
-      setTimeout(() => btn.innerText = "Save", 1000);
-    }
-  });
-}
-
-function saveNote(uid) {
-  const note = document.getElementById(`note-${uid}`).value;
-  if (!note.trim()) return alert("Note is empty.");
-  const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: note, time }, err => {
-    if (!err) document.getElementById(`note-${uid}`).value = "";
-  });
-}
-</script>
+      update(ref(db), updates);
+      noteInput.value = "";
+    };
+  </script>
 </body>
 </html>

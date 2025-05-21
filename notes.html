@@ -1,62 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>Parcel Notes Viewer</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input, button { margin: 5px 0; padding: 5px; }
-    li { margin-bottom: 8px; line-height: 1.4; }
-  </style>
+  <title>Parcel Notes</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+    import { firebaseConfig } from './firebase-config.js';
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const uidParam = new URLSearchParams(window.location.search).get("uid");
+    const title = document.getElementById("title");
+    const log = document.getElementById("log");
+    const input = document.getElementById("noteInput");
+    const dropdown = document.getElementById("statusDropdown");
+
+    title.textContent = uidParam;
+
+    const statusOptions = [
+      "New", "New with Contact",
+      "Follow Up 1", "Follow Up 2", "Follow Up 3",
+      "On Hold", "Not Interested", "Conversion"
+    ];
+    statusOptions.forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt;
+      o.textContent = opt;
+      dropdown.appendChild(o);
+    });
+
+    const dataRef = ref(db, uidParam);
+    onValue(dataRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const notes = data.notes || {};
+      let html = "";
+
+      Object.values(notes).sort((a, b) =>
+        (b.timestamp || "").localeCompare(a.timestamp || "")
+      ).forEach(note => {
+        html += `<div><b>${note.status}</b> – ${note.text}<br><small>${note.timestamp}</small></div><hr>`;
+      });
+
+      log.innerHTML = html || "No notes yet.";
+    });
+
+    window.submitNote = () => {
+      const note = input.value.trim();
+      const status = dropdown.value;
+
+      if (!note) return;
+      const notesRef = ref(db, `${uidParam}/notes`);
+      push(notesRef, {
+        text: note,
+        status: status,
+        timestamp: new Date().toISOString(),
+        source: "notes.html"
+      });
+      input.value = "";
+    };
+  </script>
 </head>
 <body>
-  <h2>View Notes for a Parcel</h2>
-  <label>Enter UID:</label><br>
-  <input type="text" id="uidInput" placeholder="e.g. 1234-5678-UID" />
-  <button onclick="loadNotes()">Load Notes</button>
-
-  <ul id="notesList"></ul>
-
-<script>
-const firebaseConfig = {
-  apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-  authDomain: "parcel-notes-system.firebaseapp.com",
-  projectId: "parcel-notes-system",
-  storageBucket: "parcel-notes-system.appspot.com",
-  messagingSenderId: "538142262863",
-  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-  measurementId: "G-GQ3CQ9EKPH",
-  databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-function loadNotes() {
-  const uid = document.getElementById("uidInput").value.trim();
-  const list = document.getElementById("notesList");
-  list.innerHTML = "";
-
-  if (!uid) {
-    alert("Please enter a UID.");
-    return;
-  }
-
-  db.ref("notes/" + uid).once("value", (snapshot) => {
-    if (!snapshot.exists()) {
-      list.innerHTML = "<li>No notes found for this UID.</li>";
-      return;
-    }
-
-    snapshot.forEach(child => {
-      const note = child.val();
-      const li = document.createElement("li");
-      li.innerHTML = `<strong>${new Date(note.time).toLocaleString()}:</strong> ${note.text}`;
-      list.appendChild(li);
-    });
-  });
-}
-</script>
+  <h2>🗒️ Parcel Notes for <span id="title"></span></h2>
+  <p>
+    <select id="statusDropdown"></select><br><br>
+    <textarea id="noteInput" rows="4" cols="50" placeholder="Leave a new note..."></textarea><br>
+    <button onclick="submitNote()">Submit Note</button>
+  </p>
+  <hr>
+  <div id="log">Loading notes...</div>
 </body>
 </html>
