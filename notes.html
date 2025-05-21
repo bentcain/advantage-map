@@ -7,8 +7,8 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
-    input, button { margin: 5px 0; }
-    li { margin-bottom: 8px; }
+    input, button { margin: 5px 0; padding: 5px; }
+    li { margin-bottom: 8px; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -21,13 +21,14 @@
 
 <script>
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+  authDomain: "parcel-notes-system.firebaseapp.com",
+  projectId: "parcel-notes-system",
+  storageBucket: "parcel-notes-system.appspot.com",
+  messagingSenderId: "538142262863",
+  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+  measurementId: "G-GQ3CQ9EKPH",
+  databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();

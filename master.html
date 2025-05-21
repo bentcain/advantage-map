@@ -8,9 +8,10 @@
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; }
     table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
     th { background-color: #f0f0f0; }
-    td.notes { font-size: 0.9em; color: #333; }
+    select, textarea, button { font-size: 0.9em; margin-top: 4px; width: 100%; }
+    textarea { height: 50px; }
   </style>
 </head>
 <body>
@@ -21,7 +22,8 @@
         <th>UID</th>
         <th>Status</th>
         <th>Latest Note</th>
-        <th>All Notes</th>
+        <th>Full Note History</th>
+        <th>Add New Note</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -29,13 +31,14 @@
 
 <script>
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+  authDomain: "parcel-notes-system.firebaseapp.com",
+  projectId: "parcel-notes-system",
+  storageBucket: "parcel-notes-system.appspot.com",
+  messagingSenderId: "538142262863",
+  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+  measurementId: "G-GQ3CQ9EKPH",
+  databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -59,28 +62,70 @@ function loadDashboard() {
     allUIDs.forEach(uid => {
       const status = statusSnap.val()?.[uid] || "New";
       const notes = notesSnap.val()?.[uid] || {};
-      const noteKeys = Object.keys(notes);
+      const noteKeys = Object.keys(notes).sort((a, b) =>
+        new Date(notes[a].time) - new Date(notes[b].time)
+      );
 
-      let latestNote = "";
-      let fullNotes = "";
-
-      if (noteKeys.length > 0) {
-        noteKeys.sort((a, b) => new Date(notes[a].time) - new Date(notes[b].time));
-        latestNote = notes[noteKeys[noteKeys.length - 1]].text;
-        fullNotes = noteKeys.map(k =>
-          `<div><strong>${new Date(notes[k].time).toLocaleString()}:</strong> ${notes[k].text}</div>`
-        ).join("");
-      }
+      const latestNote = noteKeys.length > 0 ? notes[noteKeys[noteKeys.length - 1]].text : "";
+      const fullNotes = noteKeys.map(k =>
+        `<div><strong>${new Date(notes[k].time).toLocaleString()}:</strong> ${notes[k].text}</div>`
+      ).join("");
 
       const row = document.createElement("tr");
+
       row.innerHTML = `
         <td>${uid}</td>
-        <td>${status}</td>
+
+        <td>
+          <select onchange="updateStatus('${uid}', this)">
+            ${[
+              "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
+              "On Hold", "Unqualified", "Not Interested", "Research Needed",
+              "Research Completed", "No Response", "RR2", "RC2",
+              "Unable To Contact", "Conversion"
+            ].map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+          </select>
+        </td>
+
         <td>${latestNote}</td>
-        <td class="notes">${fullNotes}</td>
+        <td>${fullNotes}</td>
+
+        <td>
+          <textarea id="note-${uid}" placeholder="Type a new note..."></textarea>
+          <button onclick="saveNote('${uid}')">Submit Note</button>
+        </td>
       `;
+
       tableBody.appendChild(row);
     });
+  });
+}
+
+function updateStatus(uid, selectEl) {
+  const newStatus = selectEl.value;
+  db.ref("status/" + uid).set(newStatus, (error) => {
+    if (!error) {
+      alert("Status updated.");
+    } else {
+      alert("Error saving status.");
+    }
+  });
+}
+
+function saveNote(uid) {
+  const noteBox = document.getElementById(`note-${uid}`);
+  const noteText = noteBox.value.trim();
+  if (!noteText) return alert("Note is empty.");
+
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: noteText, time: timestamp }, (error) => {
+    if (!error) {
+      alert("Note saved!");
+      noteBox.value = "";
+      loadDashboard(); // Refresh notes
+    } else {
+      alert("Error saving note.");
+    }
   });
 }
 

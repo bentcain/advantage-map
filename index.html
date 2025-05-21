@@ -41,7 +41,7 @@ L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
   subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
 }).addTo(map);
 
-// 🚨 CROSS-PLATFORM FETCH FIX APPLIED HERE
+// Load GeoJSON dynamically
 fetch("geojson_filename.txt")
   .then(response => response.text())
   .then(filename => fetch(filename.replace(/\r?\n|\r/g, '').trim()))
@@ -89,7 +89,6 @@ function onEachFeature(feature, layer) {
   if (!props.uid) return;
 
   let content = `<b>Project: ${props.Source || "N/A"}</b><br><hr>`;
-
   for (let key in props) {
     if (key !== "_searchable" && key !== "uid") {
       content += `<b>${key}</b>: ${props[key]}<br>`;
