@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <title>Advantage Interactive Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- ✅ Leaflet 1.7.1 and Leaflet Search 2.9.7 (Confirmed Working Pair) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.min.css" />
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
     .legend {
@@ -25,15 +27,10 @@
 <div id="map"></div>
 <div class="legend" id="legend"></div>
 
-<!-- Firebase 8 -->
+<!-- ✅ Firebase 8 (Inline Config - Confirmed Working) -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-<!-- Leaflet -->
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
-
 <script>
-// Inline config (verified working)
 const firebaseConfig = {
   apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
   authDomain: "parcel-notes-system.firebaseapp.com",
@@ -46,6 +43,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 </script>
+
+<!-- ✅ Leaflet Scripts (Ordered Before Map Logic) -->
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
 <script>
 const map = L.map('map').setView([40, -89], 7);
@@ -104,19 +105,20 @@ fetch("geojson_filename.txt")
 
     map.fitBounds(geojson.getBounds());
 
-    const search = new L.Control.Search({
-      layer: geojson,
-      propertyName: "_searchable",
-      marker: false,
-      moveToLocation: (latlng, title, map) => map.setView(latlng, 17)
-    });
-
-    search.on('search:locationfound', e => {
-      if (e.layer._popup) e.layer.openPopup();
-      L.circleMarker(e.latlng, { radius: 8, color: 'red', fill: false }).addTo(map);
-    });
-
-    map.addControl(search);
+    // ✅ Only run if plugin is defined
+    if (typeof L.Control.Search === "function") {
+      const search = new L.Control.Search({
+        layer: geojson,
+        propertyName: "_searchable",
+        marker: false,
+        moveToLocation: (latlng, title, map) => map.setView(latlng, 17)
+      });
+      search.on('search:locationfound', e => {
+        if (e.layer._popup) e.layer.openPopup();
+        L.circleMarker(e.latlng, { radius: 8, color: 'red', fill: false }).addTo(map);
+      });
+      map.addControl(search);
+    }
   });
 
 function onEachFeature(feature, layer) {
