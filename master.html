@@ -1,90 +1,159 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Master Parcel Dashboard</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background-color: #f0f0f0; }
-    td.notes { font-size: 0.9em; color: #333; }
-  </style>
+  <title>Parcel Master Spreadsheet</title>
+  <meta charset="utf-8" />
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+      authDomain: "parcel-notes-system.firebaseapp.com",
+      projectId: "parcel-notes-system",
+      storageBucket: "parcel-notes-system.appspot.com",
+      messagingSenderId: "538142262863",
+      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+      measurementId: "G-GQ3CQ9EKPH",
+      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const uidMap = await fetch('uid_map.json').then(res => res.json());
+    const geojsonFilename = await fetch('geojson_filename.txt').then(r => r.text());
+    const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
+
+    const container = document.createElement("table");
+    container.border = 1;
+    container.style.width = "100%";
+
+    const headerRow = document.createElement("tr");
+    const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
+
+    // Add dynamic GeoJSON properties as spreadsheet columns
+    const allKeys = new Set();
+    geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
+    const dynamicFields = Array.from(allKeys);
+    dynamicFields.forEach(field => headers.unshift(field)); // Insert before UID
+
+    headers.forEach(h => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+
+    container.appendChild(headerRow);
+
+    geojson.features.forEach(feature => {
+      const row = document.createElement("tr");
+      const uid = feature.properties.uid || "";
+      const firebasePath = `parcel_${uid}`;
+
+      // Add dynamic GeoJSON fields
+      dynamicFields.forEach(key => {
+        const td = document.createElement("td");
+        td.textContent = feature.properties[key] || "";
+        row.appendChild(td);
+      });
+
+      const uidCell = document.createElement("td");
+      uidCell.textContent = `parcel_${uid}`;
+      row.appendChild(uidCell);
+
+      const statusCell = document.createElement("td");
+      const statusDropdown = document.createElement("select");
+      const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
+      statusOptions.forEach(opt => {
+        const option = document.createElement("option");
+        option.value = opt;
+        option.textContent = opt;
+        statusDropdown.appendChild(option);
+      });
+      statusCell.appendChild(statusDropdown);
+      row.appendChild(statusCell);
+
+      const noteInputCell = document.createElement("td");
+      const noteInput = document.createElement("textarea");
+      noteInput.rows = 2;
+      noteInput.cols = 30;
+      noteInputCell.appendChild(noteInput);
+      row.appendChild(noteInputCell);
+
+      const submitCell = document.createElement("td");
+      const submitBtn = document.createElement("button");
+      submitBtn.textContent = "Save";
+      submitBtn.onclick = () => {
+        const noteText = noteInput.value.trim();
+        const newStatus = statusDropdown.value;
+
+        if (!noteText && !newStatus) return;
+
+        const updates = {};
+        if (noteText) {
+          const noteRef = ref(db, `${firebasePath}/notes`);
+          push(noteRef, {
+            text: noteText,
+            timestamp: new Date().toISOString(),
+            status: newStatus,
+            source: "dashboard"
+          });
+        }
+
+        if (newStatus) {
+          updates[`${firebasePath}/status`] = newStatus;
+          update(ref(db), updates);
+        }
+
+        alert("Saved!");
+        noteInput.value = "";
+      };
+      submitCell.appendChild(submitBtn);
+      row.appendChild(submitCell);
+
+      const historyCell = document.createElement("td");
+      row.appendChild(historyCell);
+
+      const actionCell = document.createElement("td");
+      actionCell.innerHTML = `
+        <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
+        <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
+      `;
+      row.appendChild(actionCell);
+
+      container.appendChild(row);
+
+      // Firebase Sync
+      onValue(ref(db, firebasePath), (snapshot) => {
+        const data = snapshot.val() || {};
+        const currentStatus = data.status || "";
+        if (statusOptions.includes(currentStatus)) {
+          statusDropdown.value = currentStatus;
+        }
+
+        const notes = data.notes || [];
+        let latest = "";
+        let history = "";
+
+        Object.values(notes).sort((a, b) =>
+          (b.timestamp || "").localeCompare(a.timestamp || "")
+        ).forEach(note => {
+          if (!latest) latest = note.text;
+          history += `<b>${note.status}</b>: ${note.text} <br><small>${note.timestamp}</small><br><br>`;
+        });
+
+        historyCell.innerHTML = history || "—";
+      });
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.body.appendChild(container);
+    });
+  </script>
 </head>
 <body>
-  <h2>Master Parcel Dashboard</h2>
-  <table id="parcelTable">
-    <thead>
-      <tr>
-        <th>UID</th>
-        <th>Status</th>
-        <th>Latest Note</th>
-        <th>All Notes</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
-<script>
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-function loadDashboard() {
-  const tableBody = document.querySelector("#parcelTable tbody");
-  tableBody.innerHTML = "";
-
-  const statusRef = db.ref("status/");
-  const notesRef = db.ref("notes/");
-
-  Promise.all([
-    statusRef.once("value"),
-    notesRef.once("value")
-  ]).then(([statusSnap, notesSnap]) => {
-    const allUIDs = new Set([
-      ...Object.keys(statusSnap.val() || {}),
-      ...Object.keys(notesSnap.val() || {})
-    ]);
-
-    allUIDs.forEach(uid => {
-      const status = statusSnap.val()?.[uid] || "New";
-      const notes = notesSnap.val()?.[uid] || {};
-      const noteKeys = Object.keys(notes);
-
-      let latestNote = "";
-      let fullNotes = "";
-
-      if (noteKeys.length > 0) {
-        noteKeys.sort((a, b) => new Date(notes[a].time) - new Date(notes[b].time));
-        latestNote = notes[noteKeys[noteKeys.length - 1]].text;
-        fullNotes = noteKeys.map(k =>
-          `<div><strong>${new Date(notes[k].time).toLocaleString()}:</strong> ${notes[k].text}</div>`
-        ).join("");
-      }
-
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${uid}</td>
-        <td>${status}</td>
-        <td>${latestNote}</td>
-        <td class="notes">${fullNotes}</td>
-      `;
-      tableBody.appendChild(row);
-    });
-  });
-}
-
-window.onload = loadDashboard;
-</script>
+  <h2>📊 Parcel Master Spreadsheet</h2>
+  <p>This dashboard shows all parcels, notes, status, and allows full table interaction.</p>
 </body>
 </html>
