@@ -1,138 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Advantage Interactive Map</title>
   <meta charset="utf-8" />
+  <title>Advantage Interactive Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
   <style>
-    #map { height: 100vh; }
-    .legend { background: white; padding: 10px; font-size: 14px; }
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    .leaflet-popup-content select,
+    .leaflet-popup-content textarea {
+      width: 100%;
+    }
   </style>
-
-  <!-- ✅ Load Firebase FIRST -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyDp0PoGV9c4chBiJ5MHUl2NyG3vCNG8vYo",
-      authDomain: "advantage-notes.firebaseapp.com",
-      databaseURL: "https://advantage-notes-default-rtdb.firebaseio.com",
-      projectId: "advantage-notes",
-      storageBucket: "advantage-notes.appspot.com",
-      messagingSenderId: "139850639729",
-      appId: "1:139850639729:web:b7f553e06c205536e5d60e"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-  </script>
 </head>
 <body>
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 <script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
 
-<script>
-const map = L.map('map').setView([39.5, -89.5], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+<script src="firebase-config.js"></script>
 
-// Load GeoJSON filename
+<script>
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const map = L.map('map').setView([40, -89], 7);
+
+L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+  maxZoom: 20,
+  subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+}).addTo(map);
+
 fetch("geojson_filename.txt")
-  .then(r => r.text())
-  .then(filename => fetch(filename))
-  .then(r => r.json())
+  .then(response => response.text())
+  .then(filename => fetch(filename.trim()))
+  .then(response => response.json())
   .then(data => {
-    const parcelLayer = L.geoJSON(data, {
-      style: feature => ({
-        color: getColor(feature.properties.Status),
-        weight: 2,
-        fillOpacity: 0.7
-      }),
+    const geojsonLayer = L.geoJSON(data, {
+      style: feature => {
+        const status = feature.properties.Status || "New";
+        const colorMap = {
+          "New": "gray", "New with Contact": "blue", "Follow Up 1": "orange",
+          "Follow Up 2": "orange", "Follow Up 3": "orange", "On Hold": "purple",
+          "Unqualified": "red", "Not Interested": "black", "Research Needed": "pink",
+          "Research Completed": "green", "No Response": "lightblue",
+          "RR2": "yellow", "RC2": "yellow", "Unable To Contact": "brown", "Conversion": "gold"
+        };
+        return { color: colorMap[status] || "gray", weight: 2 };
+      },
       onEachFeature: onEachFeature
     }).addTo(map);
 
-    map.fitBounds(parcelLayer.getBounds());
+    map.fitBounds(geojsonLayer.getBounds());
 
-    const search = new L.Control.Search({
-      layer: parcelLayer,
-      propertyName: 'Property',
-      marker: {
-        icon: new L.Icon.Default(),
-        animate: true
-      },
-      moveToLocation: (latlng, title, map) => map.setView(latlng, 17),
-      initial: false
+    const searchControl = new L.Control.Search({
+      layer: geojsonLayer,
+      propertyName: "_searchable",
+      marker: false,
+      moveToLocation: (latlng, title, map) => {
+        map.setView(latlng, 17);
+      }
     });
-    map.addControl(search);
-  });
 
-function getColor(status) {
-  if (!status) return 'blue';
-  const s = status.toLowerCase();
-  if (s.includes("conversion")) return "orange";
-  if (s.includes("follow")) return "blue";
-  if (s.includes("not interested")) return "black";
-  if (s.includes("on hold")) return "purple";
-  return "gray";
-}
+    searchControl.on('search:locationfound', e => {
+      if (!e.layer._popup) return;
+      e.layer.openPopup();
+      L.circleMarker(e.latlng, {
+        radius: 10, color: 'red', weight: 3, fill: false
+      }).addTo(map);
+    });
+
+    map.addControl(searchControl);
+  });
 
 function onEachFeature(feature, layer) {
   const props = feature.properties;
-  const uid = props.uid || "";
-  const status = props.Status || "New";
+  if (!props.uid) return;
 
-  let popup = `<b>Parcel Info:</b><br>`;
+  let content = `<b>Project: ${props.Source || "N/A"}</b><br><hr>`;
+
   for (let key in props) {
-    if (props[key]) popup += `<b>${key}</b>: ${props[key]}<br>`;
+    if (key !== "_searchable" && key !== "uid") {
+      content += `<b>${key}</b>: ${props[key]}<br>`;
+    }
   }
 
-  popup += `
+  const uid = props.uid;
+  const currentStatus = props.Status || "New";
+
+  content += `
     <hr>
-    <b>Lead Status:</b>
+    <label><b>Lead Status:</b></label>
     <select id="status-${uid}">
-      ${["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Unqualified", "Not Interested", "Research Needed", "Research Completed", "No Response", "RR2", "RC2", "Unable To Contact", "Conversion"]
-        .map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+      ${[
+        "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
+        "On Hold", "Unqualified", "Not Interested", "Research Needed",
+        "Research Completed", "No Response", "RR2", "RC2",
+        "Unable To Contact", "Conversion"
+      ].map(status =>
+        `<option value="${status}" ${status === currentStatus ? "selected" : ""}>${status}</option>`
+      ).join("")}
     </select>
-    <button onclick="saveStatus('${uid}')">Save</button><br><br>
-    <b>Add Note:</b><br>
-    <textarea id="note-${uid}" rows="2" cols="25"></textarea><br>
-    <button onclick="saveNote('${uid}')">Submit Note</button><br><br>
-    <a href="notes.html?uid=${uid}" target="_blank">View Notes</a><br>
-    <a href="master.html" target="_blank">Open Dashboard</a>
+    <button onclick="saveStatus('${uid}', this)">Save</button><br><br>
+
+    <label><b>Add Note:</b></label><br>
+    <textarea id="note-${uid}" rows="3"></textarea><br>
+    <button onclick="saveNote('${uid}')">Submit Note</button>
   `;
-  layer.bindPopup(popup);
+
+  layer.bindPopup(content);
 }
 
-function saveStatus(uid) {
+function saveStatus(uid, btn) {
   const newStatus = document.getElementById(`status-${uid}`).value;
-  db.ref("status/" + uid).set(newStatus);
-  alert("Status updated");
+  db.ref("status/" + uid).set(newStatus, (error) => {
+    if (!error) {
+      alert("Status updated!");
+      btn.innerText = "Saved!";
+      setTimeout(() => btn.innerText = "Save", 1000);
+    } else {
+      alert("Error saving status.");
+    }
+  });
 }
 
 function saveNote(uid) {
   const note = document.getElementById(`note-${uid}`).value;
-  const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: note, time });
-  alert("Note submitted");
+  if (!note.trim()) return alert("Note is empty.");
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time: timestamp }, (error) => {
+    if (!error) {
+      alert("Note saved!");
+      document.getElementById(`note-${uid}`).value = "";
+    } else {
+      alert("Error saving note.");
+    }
+  });
 }
-
-// Add legend
-const legend = L.control({position: 'bottomleft'});
-legend.onAdd = function () {
-  const div = L.DomUtil.create('div', 'legend');
-  div.innerHTML = `<b>Lead Status</b><br>
-    <i style="background:orange;width:10px;height:10px;display:inline-block;"></i> Conversion<br>
-    <i style="background:blue;width:10px;height:10px;display:inline-block;"></i> Follow Up<br>
-    <i style="background:gray;width:10px;height:10px;display:inline-block;"></i> New<br>
-    <i style="background:black;width:10px;height:10px;display:inline-block;"></i> Not Interested<br>
-    <i style="background:purple;width:10px;height:10px;display:inline-block;"></i> On Hold<br>`;
-  return div;
-};
-legend.addTo(map);
 </script>
 </body>
 </html>
