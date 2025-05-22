@@ -1,22 +1,49 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>Parcel Notes Viewer</title>
+  <meta charset="utf-8">
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input, button { margin: 5px 0; padding: 5px; }
-    li { margin-bottom: 8px; line-height: 1.4; }
-  </style>
 </head>
 <body>
-  <h2>View Notes for a Parcel</h2>
-  <label>Enter UID:</label><br>
-  <input type="text" id="uidInput" placeholder="e.g. parcel_01420" />
-  <button onclick="loadNotes()">Load Notes</button>
-  <ul id="notesList"></ul>
+  <h2>Parcel Notes Viewer</h2>
+  <div>
+    <label><strong>UID:</strong></label>
+    <input type="text" id="uidInput">
+    <button onclick="loadNotes()">Load Notes</button>
+  </div>
+
+  <div id="controls" style="display:none;">
+    <p><strong>Status:</strong>
+      <select id="statusSelect">
+        <option>New</option>
+        <option>New with Contact</option>
+        <option>Follow Up 1</option>
+        <option>Follow Up 2</option>
+        <option>Follow Up 3</option>
+        <option>Conversion</option>
+        <option>On Hold</option>
+        <option>Not Interested</option>
+        <option>Unqualified</option>
+        <option>Research Needed</option>
+        <option>Research Completed</option>
+        <option>No Response</option>
+        <option>RR2</option>
+        <option>RC2</option>
+        <option>Unable To Contact</option>
+      </select>
+      <button onclick="saveStatus()">Save</button>
+    </p>
+
+    <p><strong>Add Note:</strong><br>
+      <textarea id="noteInput" rows="3" cols="50"></textarea><br>
+      <button onclick="submitNote()">Submit Note</button>
+    </p>
+
+    <h3>Note History</h3>
+    <ul id="noteList"></ul>
+  </div>
 
 <script>
 const firebaseConfig = {
@@ -26,43 +53,67 @@ const firebaseConfig = {
   projectId: "parcel-notes-system",
   storageBucket: "parcel-notes-system.appspot.com",
   messagingSenderId: "538142262863",
-  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-  measurementId: "G-GQ3CQ9EKPH"
+  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+const uidField = document.getElementById("uidInput");
+const statusSelect = document.getElementById("statusSelect");
+const noteInput = document.getElementById("noteInput");
+const noteList = document.getElementById("noteList");
+const controls = document.getElementById("controls");
+
+function getUIDFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("uid") || "";
+}
+
 function loadNotes() {
-  const uid = document.getElementById("uidInput").value.trim();
-  const list = document.getElementById("notesList");
-  list.innerHTML = "";
+  const uid = uidField.value.trim();
+  if (!uid) return;
 
-  if (!uid) {
-    alert("Please enter a UID.");
-    return;
-  }
+  controls.style.display = "block";
+  noteList.innerHTML = "";
 
-  db.ref("notes/" + uid).once("value", (snapshot) => {
-    if (!snapshot.exists()) {
-      list.innerHTML = "<li>No notes found for this UID.</li>";
-      return;
-    }
+  db.ref("status/" + uid).once("value", snap => {
+    const current = snap.val() || "New";
+    statusSelect.value = current;
+  });
 
-    snapshot.forEach(child => {
-      const note = child.val();
+  db.ref("notes/" + uid).once("value", snap => {
+    const notes = snap.val() || {};
+    Object.keys(notes).sort().forEach(key => {
+      const note = notes[key];
       const li = document.createElement("li");
-      li.innerHTML = `<strong>${new Date(note.time).toLocaleString()}:</strong> ${note.text}`;
-      list.appendChild(li);
+      li.textContent = `${note.time}: ${note.text}`;
+      noteList.appendChild(li);
     });
   });
 }
 
-// Optional: auto-fill UID from ?uid=XYZ
+function saveStatus() {
+  const uid = uidField.value.trim();
+  const newStatus = statusSelect.value;
+  db.ref("status/" + uid).set(newStatus);
+  alert("Status updated!");
+}
+
+function submitNote() {
+  const uid = uidField.value.trim();
+  const note = noteInput.value.trim();
+  if (!note) return;
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time: timestamp });
+  alert("Note saved!");
+  noteInput.value = "";
+  loadNotes();
+}
+
 window.onload = () => {
-  const params = new URLSearchParams(window.location.search);
-  const uid = params.get("uid");
-  if (uid) {
-    document.getElementById("uidInput").value = uid;
+  const uidFromURL = getUIDFromURL();
+  if (uidFromURL) {
+    uidField.value = uidFromURL;
     loadNotes();
   }
 };

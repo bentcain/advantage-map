@@ -1,34 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>Master Parcel Dashboard</title>
+  <meta charset="utf-8">
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    input[type="text"] { margin-bottom: 10px; padding: 5px; width: 300px; font-size: 1em; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    th { background-color: #f0f0f0; }
-    select, textarea, button { font-size: 0.9em; width: 100%; margin-top: 4px; }
-    textarea { height: 50px; }
-  </style>
 </head>
 <body>
   <h2>Master Parcel Dashboard</h2>
-  <input type="text" id="searchInput" placeholder="Search UID or note text..." oninput="filterTable()" />
-
-  <table id="parcelTable">
-    <thead>
-      <tr>
-        <th>UID</th>
-        <th>Status</th>
-        <th>Latest Note</th>
-        <th>Full Note History</th>
-        <th>New Note</th>
-      </tr>
-    </thead>
+  <table border="1" id="parcelTable">
+    <thead></thead>
     <tbody></tbody>
   </table>
 
@@ -40,131 +21,93 @@ const firebaseConfig = {
   projectId: "parcel-notes-system",
   storageBucket: "parcel-notes-system.appspot.com",
   messagingSenderId: "538142262863",
-  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-  measurementId: "G-GQ3CQ9EKPH"
+  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let masterData = [];
+let uidMap = {};
+let geojsonData = {};
+let geoFields = [];
+
+Promise.all([
+  fetch("uid_map.json").then(r => r.json()),
+  fetch("geojson_filename.txt").then(r => r.text()).then(name => fetch(name.trim()).then(r => r.json()))
+]).then(([uidMapJson, geojson]) => {
+  uidMap = uidMapJson;
+  geojsonData = geojson;
+  geoFields = Object.keys(geojson.features[0].properties || {});
+  buildTableHeaders();
+  loadDashboard();
+});
+
+function buildTableHeaders() {
+  const headerRow = document.querySelector("#parcelTable thead");
+  headerRow.innerHTML = "<tr><th>UID</th>" +
+    geoFields.map(f => `<th>${f}</th>`).join("") +
+    "<th>Status</th><th>Latest Note</th><th>All Notes</th><th>New Note</th><th>Actions</th></tr>";
+}
 
 function loadDashboard() {
   const tableBody = document.querySelector("#parcelTable tbody");
-  tableBody.innerHTML = "";
+  db.ref("status").once("value", statusSnap => {
+    db.ref("notes").once("value", notesSnap => {
+      tableBody.innerHTML = "";
 
-  const statusRef = db.ref("status/");
-  const notesRef = db.ref("notes/");
+      Object.keys(uidMap).forEach(uid => {
+        const fid = uidMap[uid];
+        const feature = geojsonData.features.find(f => f.properties.FID == fid);
+        if (!feature) return;
 
-  Promise.all([
-    statusRef.once("value"),
-    notesRef.once("value")
-  ]).then(([statusSnap, notesSnap]) => {
-    const statuses = statusSnap.val() || {};
-    const notes = notesSnap.val() || {};
-    const allUIDs = new Set([...Object.keys(statuses), ...Object.keys(notes)]);
+        const props = feature.properties;
+        const status = statusSnap.child(uid).val() || "New";
+        const notes = notesSnap.child(uid).val() || {};
+        const noteKeys = Object.keys(notes);
+        const latestNote = noteKeys.length ? notes[noteKeys[noteKeys.length - 1]].text : "";
+        const allNotes = noteKeys.map(k => notes[k].text).join(" | ");
 
-    const rows = [];
-
-    allUIDs.forEach(uid => {
-      const status = statuses[uid] || "New";
-      const noteGroup = notes[uid] || {};
-      const noteKeys = Object.keys(noteGroup).sort((a, b) =>
-        new Date(noteGroup[a].time) - new Date(noteGroup[b].time)
-      );
-      const latestNote = noteKeys.length > 0 ? noteGroup[noteKeys[noteKeys.length - 1]].text : "";
-      const fullNotes = noteKeys.map(k =>
-        `<div><strong>${new Date(noteGroup[k].time).toLocaleString()}:</strong> ${noteGroup[k].text}</div>`
-      ).join("");
-
-      rows.push({
-        uid,
-        status,
-        latestNote,
-        fullNotes
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${uid}</td>
+          ${geoFields.map(f => `<td>${props[f] || ""}</td>`).join("")}
+          <td>
+            <select onchange="saveStatus('${uid}', this.value)">
+              ${[
+                "Conversion", "Follow Up 1", "Follow Up 2", "Follow Up 3", "New",
+                "Not Interested", "On Hold", "New with Contact", "Unqualified",
+                "Research Needed", "Research Completed", "No Response",
+                "RR2", "RC2", "Unable To Contact"
+              ].map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+            </select>
+          </td>
+          <td>${latestNote}</td>
+          <td>${allNotes}</td>
+          <td>
+            <textarea id="note-${uid}" rows="2" cols="20"></textarea><br>
+            <button onclick="saveNote('${uid}')">Save</button>
+          </td>
+          <td>
+            <a href="index.html?highlight=${uid}" target="_blank">🔍 Zoom</a><br>
+            <a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a>
+          </td>
+        `;
+        tableBody.appendChild(row);
       });
     });
-
-    // Sort by custom priority
-    const priority = {
-      "Conversion": 1,
-      "Follow Up 1": 2, "Follow Up 2": 2, "Follow Up 3": 2,
-      "New": 3,
-      "Not Interested": 4,
-      "On Hold": 5
-    };
-
-    rows.sort((a, b) => {
-      const prioA = priority[a.status] || 99;
-      const prioB = priority[b.status] || 99;
-      return prioA - prioB;
-    });
-
-    masterData = rows;
-    renderTable(rows);
   });
 }
 
-function renderTable(data) {
-  const tableBody = document.querySelector("#parcelTable tbody");
-  tableBody.innerHTML = "";
-
-  data.forEach(row => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${row.uid}</td>
-      <td>
-        <select onchange="updateStatus('${row.uid}', this)">
-          ${[
-            "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
-            "On Hold", "Unqualified", "Not Interested", "Research Needed",
-            "Research Completed", "No Response", "RR2", "RC2",
-            "Unable To Contact", "Conversion"
-          ].map(s => `<option value="${s}" ${s === row.status ? "selected" : ""}>${s}</option>`).join("")}
-        </select>
-      </td>
-      <td>${row.latestNote}</td>
-      <td>${row.fullNotes}</td>
-      <td>
-        <textarea id="note-${row.uid}" placeholder="Add a note..."></textarea>
-        <button onclick="saveNote('${row.uid}')">Submit</button>
-      </td>
-    `;
-    tableBody.appendChild(tr);
-  });
-}
-
-function updateStatus(uid, select) {
-  const value = select.value;
-  db.ref("status/" + uid).set(value, err => {
-    if (!err) alert("Status updated.");
-  });
+function saveStatus(uid, newStatus) {
+  db.ref("status/" + uid).set(newStatus);
+  alert("Status updated for " + uid);
 }
 
 function saveNote(uid) {
-  const box = document.getElementById(`note-${uid}`);
-  const text = box.value.trim();
-  if (!text) return alert("Note is empty.");
-  const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text, time }, err => {
-    if (!err) {
-      alert("Note saved.");
-      box.value = "";
-      loadDashboard();
-    }
-  });
+  const note = document.getElementById("note-" + uid).value;
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time: timestamp });
+  alert("Note saved for " + uid);
 }
-
-function filterTable() {
-  const query = document.getElementById("searchInput").value.toLowerCase();
-  const filtered = masterData.filter(row =>
-    row.uid.toLowerCase().includes(query) ||
-    row.latestNote.toLowerCase().includes(query) ||
-    row.fullNotes.toLowerCase().includes(query)
-  );
-  renderTable(filtered);
-}
-
-window.onload = loadDashboard;
 </script>
 </body>
 </html>

@@ -25,11 +25,15 @@
 <div id="map"></div>
 <div class="legend" id="legend"></div>
 
+<!-- Firebase 8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<!-- Leaflet -->
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
+
 <script>
+// Inline config (verified working)
 const firebaseConfig = {
   apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
   authDomain: "parcel-notes-system.firebaseapp.com",
@@ -37,8 +41,7 @@ const firebaseConfig = {
   projectId: "parcel-notes-system",
   storageBucket: "parcel-notes-system.appspot.com",
   messagingSenderId: "538142262863",
-  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-  measurementId: "G-GQ3CQ9EKPH"
+  appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
@@ -47,7 +50,7 @@ const db = firebase.database();
 <script>
 const map = L.map('map').setView([40, -89], 7);
 L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-  maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+  maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3']
 }).addTo(map);
 
 const colorMap = {
@@ -89,11 +92,11 @@ fetch("geojson_filename.txt")
 
     const labelLayer = L.geoJSON(data, {
       pointToLayer: (f, latlng) => {
-        const name = f.properties["Project ID"] || "";
+        const label = `${f.properties["Project ID"] || ""} - ${f.properties["Area (acre"] || ""} acres`;
         return L.marker(latlng, {
           icon: L.divIcon({
             className: "label",
-            html: `<div style="font-size:10px; background:white; padding:1px;">${name}</div>`
+            html: `<div style="font-size:10px; background:white; padding:1px;">${label}</div>`
           })
         });
       }
@@ -120,52 +123,48 @@ function onEachFeature(feature, layer) {
   const props = feature.properties;
   if (!props.uid) return;
 
-  const name = props["Project ID"] || "Unnamed";
-  let popup = `<b>${name}</b><br><hr>`;
+  let popup = "";
   for (let key in props) {
-    if (key !== "_searchable" && key !== "uid") {
+    if (key !== "_searchable") {
       popup += `<b>${key}</b>: ${props[key]}<br>`;
     }
   }
 
   const uid = props.uid;
-  const status = props.Status || "New";
+  const currentStatus = props.Status || "New";
+
   popup += `
     <hr>
     <label><b>Status:</b></label>
     <select id="status-${uid}">
-      ${Object.keys(colorMap).map(s => `<option ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+      ${Object.keys(colorMap).map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
     </select>
-    <button onclick="saveStatus('${uid}', this)">Save</button><br><br>
+    <button onclick="saveStatus('${uid}')">Save</button><br><br>
 
-    <label><b>Note:</b></label>
-    <textarea id="note-${uid}" rows="3"></textarea>
+    <label><b>Add Note:</b></label><br>
+    <textarea id="note-${uid}" rows="3" style="width:100%"></textarea><br>
     <button onclick="saveNote('${uid}')">Submit Note</button><br><br>
 
     <a href="notes.html?uid=${uid}" target="_blank">📋 View Parcel Notes</a><br>
-    <a href="https://www.google.com/maps?q=&layer=c&cbll=${layer._latlng.lat},${layer._latlng.lng}" target="_blank">🌍 Street View</a>
+    ${layer._latlng ? `
+      <a href="https://www.google.com/maps?q=&layer=c&cbll=${layer._latlng.lat},${layer._latlng.lng}" target="_blank">🌍 Street View</a>
+    ` : ''}
   `;
 
   layer.bindPopup(popup);
 }
 
-function saveStatus(uid, btn) {
-  const value = document.getElementById(`status-${uid}`).value;
-  db.ref("status/" + uid).set(value, err => {
-    if (!err) {
-      btn.innerText = "Saved!";
-      setTimeout(() => btn.innerText = "Save", 1000);
-    }
-  });
+function saveStatus(uid) {
+  const newStatus = document.getElementById(`status-${uid}`).value;
+  db.ref("status/" + uid).set(newStatus);
+  alert("Status updated!");
 }
 
 function saveNote(uid) {
   const note = document.getElementById(`note-${uid}`).value;
-  if (!note.trim()) return alert("Note is empty.");
-  const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: note, time }, err => {
-    if (!err) document.getElementById(`note-${uid}`).value = "";
-  });
+  const timestamp = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text: note, time: timestamp });
+  alert("Note saved!");
 }
 </script>
 </body>
