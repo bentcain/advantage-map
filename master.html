@@ -1,14 +1,34 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Master Parcel Dashboard</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input[type="text"] { margin-bottom: 10px; padding: 5px; width: 300px; font-size: 1em; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
+    th { background-color: #f0f0f0; }
+    select, textarea, button { font-size: 0.9em; width: 100%; margin-top: 4px; }
+    textarea { height: 50px; }
+  </style>
 </head>
 <body>
   <h2>Master Parcel Dashboard</h2>
-  <table border="1" id="parcelTable">
-    <thead><tr><th>UID</th><th>Status</th><th>Latest Note</th><th>All Notes</th></tr></thead>
+  <input type="text" id="searchInput" placeholder="Search UID or note text..." oninput="filterTable()" />
+
+  <table id="parcelTable">
+    <thead>
+      <tr>
+        <th>UID</th>
+        <th>Status</th>
+        <th>Latest Note</th>
+        <th>Full Note History</th>
+        <th>New Note</th>
+      </tr>
+    </thead>
     <tbody></tbody>
   </table>
 
@@ -26,37 +46,122 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+let masterData = [];
+
 function loadDashboard() {
+  const tableBody = document.querySelector("#parcelTable tbody");
+  tableBody.innerHTML = "";
+
   const statusRef = db.ref("status/");
   const notesRef = db.ref("notes/");
-  const tableBody = document.querySelector("#parcelTable tbody");
 
-  statusRef.once("value", (statusSnap) => {
-    notesRef.once("value", (notesSnap) => {
-      tableBody.innerHTML = "";
-      const allUIDs = new Set([
-        ...Object.keys(statusSnap.val() || {}),
-        ...Object.keys(notesSnap.val() || {})
-      ]);
+  Promise.all([
+    statusRef.once("value"),
+    notesRef.once("value")
+  ]).then(([statusSnap, notesSnap]) => {
+    const statuses = statusSnap.val() || {};
+    const notes = notesSnap.val() || {};
+    const allUIDs = new Set([...Object.keys(statuses), ...Object.keys(notes)]);
 
-      allUIDs.forEach(uid => {
-        const status = statusSnap.child(uid).val() || "New";
-        const notes = notesSnap.child(uid).val() || {};
-        const noteKeys = Object.keys(notes);
-        const latest = noteKeys.length ? notes[noteKeys[noteKeys.length - 1]].text : "";
-        const allNotes = noteKeys.map(k => notes[k].text).join(" | ");
+    const rows = [];
 
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${uid}</td>
-          <td>${status}</td>
-          <td>${latest}</td>
-          <td>${allNotes}</td>
-        `;
-        tableBody.appendChild(row);
+    allUIDs.forEach(uid => {
+      const status = statuses[uid] || "New";
+      const noteGroup = notes[uid] || {};
+      const noteKeys = Object.keys(noteGroup).sort((a, b) =>
+        new Date(noteGroup[a].time) - new Date(noteGroup[b].time)
+      );
+      const latestNote = noteKeys.length > 0 ? noteGroup[noteKeys[noteKeys.length - 1]].text : "";
+      const fullNotes = noteKeys.map(k =>
+        `<div><strong>${new Date(noteGroup[k].time).toLocaleString()}:</strong> ${noteGroup[k].text}</div>`
+      ).join("");
+
+      rows.push({
+        uid,
+        status,
+        latestNote,
+        fullNotes
       });
     });
+
+    // Sort by custom priority
+    const priority = {
+      "Conversion": 1,
+      "Follow Up 1": 2, "Follow Up 2": 2, "Follow Up 3": 2,
+      "New": 3,
+      "Not Interested": 4,
+      "On Hold": 5
+    };
+
+    rows.sort((a, b) => {
+      const prioA = priority[a.status] || 99;
+      const prioB = priority[b.status] || 99;
+      return prioA - prioB;
+    });
+
+    masterData = rows;
+    renderTable(rows);
   });
+}
+
+function renderTable(data) {
+  const tableBody = document.querySelector("#parcelTable tbody");
+  tableBody.innerHTML = "";
+
+  data.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.uid}</td>
+      <td>
+        <select onchange="updateStatus('${row.uid}', this)">
+          ${[
+            "New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3",
+            "On Hold", "Unqualified", "Not Interested", "Research Needed",
+            "Research Completed", "No Response", "RR2", "RC2",
+            "Unable To Contact", "Conversion"
+          ].map(s => `<option value="${s}" ${s === row.status ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </td>
+      <td>${row.latestNote}</td>
+      <td>${row.fullNotes}</td>
+      <td>
+        <textarea id="note-${row.uid}" placeholder="Add a note..."></textarea>
+        <button onclick="saveNote('${row.uid}')">Submit</button>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+function updateStatus(uid, select) {
+  const value = select.value;
+  db.ref("status/" + uid).set(value, err => {
+    if (!err) alert("Status updated.");
+  });
+}
+
+function saveNote(uid) {
+  const box = document.getElementById(`note-${uid}`);
+  const text = box.value.trim();
+  if (!text) return alert("Note is empty.");
+  const time = new Date().toISOString();
+  db.ref("notes/" + uid).push({ text, time }, err => {
+    if (!err) {
+      alert("Note saved.");
+      box.value = "";
+      loadDashboard();
+    }
+  });
+}
+
+function filterTable() {
+  const query = document.getElementById("searchInput").value.toLowerCase();
+  const filtered = masterData.filter(row =>
+    row.uid.toLowerCase().includes(query) ||
+    row.latestNote.toLowerCase().includes(query) ||
+    row.fullNotes.toLowerCase().includes(query)
+  );
+  renderTable(filtered);
 }
 
 window.onload = loadDashboard;

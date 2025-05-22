@@ -1,14 +1,20 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Parcel Notes Viewer</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { margin: 5px 0; padding: 5px; }
+    li { margin-bottom: 8px; line-height: 1.4; }
+  </style>
 </head>
 <body>
-  <h2>Parcel Notes Viewer</h2>
-  <label>Enter UID:</label>
-  <input type="text" id="uidInput">
+  <h2>View Notes for a Parcel</h2>
+  <label>Enter UID:</label><br>
+  <input type="text" id="uidInput" placeholder="e.g. parcel_01420" />
   <button onclick="loadNotes()">Load Notes</button>
   <ul id="notesList"></ul>
 
@@ -27,19 +33,39 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 function loadNotes() {
-  const uid = document.getElementById("uidInput").value;
-  const ref = db.ref("notes/" + uid);
-  ref.once("value", (snapshot) => {
-    const notesList = document.getElementById("notesList");
-    notesList.innerHTML = "";
+  const uid = document.getElementById("uidInput").value.trim();
+  const list = document.getElementById("notesList");
+  list.innerHTML = "";
+
+  if (!uid) {
+    alert("Please enter a UID.");
+    return;
+  }
+
+  db.ref("notes/" + uid).once("value", (snapshot) => {
+    if (!snapshot.exists()) {
+      list.innerHTML = "<li>No notes found for this UID.</li>";
+      return;
+    }
+
     snapshot.forEach(child => {
       const note = child.val();
       const li = document.createElement("li");
-      li.textContent = `${note.time}: ${note.text}`;
-      notesList.appendChild(li);
+      li.innerHTML = `<strong>${new Date(note.time).toLocaleString()}:</strong> ${note.text}`;
+      list.appendChild(li);
     });
   });
 }
+
+// Optional: auto-fill UID from ?uid=XYZ
+window.onload = () => {
+  const params = new URLSearchParams(window.location.search);
+  const uid = params.get("uid");
+  if (uid) {
+    document.getElementById("uidInput").value = uid;
+    loadNotes();
+  }
+};
 </script>
 </body>
 </html>
