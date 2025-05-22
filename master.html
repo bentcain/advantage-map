@@ -3,6 +3,20 @@
 <head>
   <title>Parcel Master Spreadsheet</title>
   <meta charset="utf-8" />
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 6px;
+      border: 1px solid #ccc;
+      vertical-align: top;
+    }
+    textarea {
+      width: 95%;
+    }
+  </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
     import { getDatabase, ref, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
@@ -21,135 +35,134 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const uidMap = await fetch('uid_map.json').then(res => res.json());
-    const geojsonFilename = await fetch('geojson_filename.txt').then(r => r.text());
-    const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
+    try {
+      const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
+      console.log("✅ GeoJSON filename loaded:", geojsonFilename.trim());
 
-    const container = document.createElement("table");
-    container.border = 1;
-    container.style.width = "100%";
+      const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
+      console.log("✅ GeoJSON data loaded. Features:", geojson.features.length);
 
-    const headerRow = document.createElement("tr");
-    const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
+      const uidMap = await fetch("uid_map.json").then(r => r.json());
+      console.log("✅ UID Map loaded. Keys:", Object.keys(uidMap).length);
 
-    // Add dynamic GeoJSON properties as spreadsheet columns
-    const allKeys = new Set();
-    geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
-    const dynamicFields = Array.from(allKeys);
-    dynamicFields.forEach(field => headers.unshift(field)); // Insert before UID
+      const table = document.createElement("table");
+      const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
 
-    headers.forEach(h => {
-      const th = document.createElement("th");
-      th.textContent = h;
-      headerRow.appendChild(th);
-    });
+      const allKeys = new Set();
+      geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
+      const dynamicFields = Array.from(allKeys).sort();
+      dynamicFields.forEach(k => headers.unshift(k)); // Add before UID
 
-    container.appendChild(headerRow);
-
-    geojson.features.forEach(feature => {
-      const row = document.createElement("tr");
-      const uid = feature.properties.uid || "";
-      const firebasePath = `parcel_${uid}`;
-
-      // Add dynamic GeoJSON fields
-      dynamicFields.forEach(key => {
-        const td = document.createElement("td");
-        td.textContent = feature.properties[key] || "";
-        row.appendChild(td);
+      const headerRow = document.createElement("tr");
+      headers.forEach(h => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        headerRow.appendChild(th);
       });
+      table.appendChild(headerRow);
 
-      const uidCell = document.createElement("td");
-      uidCell.textContent = `parcel_${uid}`;
-      row.appendChild(uidCell);
+      geojson.features.forEach(feature => {
+        const row = document.createElement("tr");
+        const uid = feature.properties.uid || "";
+        const firebasePath = `parcel_${uid}`;
 
-      const statusCell = document.createElement("td");
-      const statusDropdown = document.createElement("select");
-      const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
-      statusOptions.forEach(opt => {
-        const option = document.createElement("option");
-        option.value = opt;
-        option.textContent = opt;
-        statusDropdown.appendChild(option);
-      });
-      statusCell.appendChild(statusDropdown);
-      row.appendChild(statusCell);
-
-      const noteInputCell = document.createElement("td");
-      const noteInput = document.createElement("textarea");
-      noteInput.rows = 2;
-      noteInput.cols = 30;
-      noteInputCell.appendChild(noteInput);
-      row.appendChild(noteInputCell);
-
-      const submitCell = document.createElement("td");
-      const submitBtn = document.createElement("button");
-      submitBtn.textContent = "Save";
-      submitBtn.onclick = () => {
-        const noteText = noteInput.value.trim();
-        const newStatus = statusDropdown.value;
-
-        if (!noteText && !newStatus) return;
-
-        const updates = {};
-        if (noteText) {
-          const noteRef = ref(db, `${firebasePath}/notes`);
-          push(noteRef, {
-            text: noteText,
-            timestamp: new Date().toISOString(),
-            status: newStatus,
-            source: "dashboard"
-          });
-        }
-
-        if (newStatus) {
-          updates[`${firebasePath}/status`] = newStatus;
-          update(ref(db), updates);
-        }
-
-        alert("Saved!");
-        noteInput.value = "";
-      };
-      submitCell.appendChild(submitBtn);
-      row.appendChild(submitCell);
-
-      const historyCell = document.createElement("td");
-      row.appendChild(historyCell);
-
-      const actionCell = document.createElement("td");
-      actionCell.innerHTML = `
-        <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
-        <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
-      `;
-      row.appendChild(actionCell);
-
-      container.appendChild(row);
-
-      // Firebase Sync
-      onValue(ref(db, firebasePath), (snapshot) => {
-        const data = snapshot.val() || {};
-        const currentStatus = data.status || "";
-        if (statusOptions.includes(currentStatus)) {
-          statusDropdown.value = currentStatus;
-        }
-
-        const notes = data.notes || [];
-        let latest = "";
-        let history = "";
-
-        Object.values(notes).sort((a, b) =>
-          (b.timestamp || "").localeCompare(a.timestamp || "")
-        ).forEach(note => {
-          if (!latest) latest = note.text;
-          history += `<b>${note.status}</b>: ${note.text} <br><small>${note.timestamp}</small><br><br>`;
+        // Add dynamic fields
+        dynamicFields.forEach(k => {
+          const td = document.createElement("td");
+          td.textContent = feature.properties[k] || "";
+          row.appendChild(td);
         });
 
-        historyCell.innerHTML = history || "—";
-      });
-    });
+        const uidCell = document.createElement("td");
+        uidCell.textContent = firebasePath;
+        row.appendChild(uidCell);
 
-    document.addEventListener("DOMContentLoaded", () => {
-      document.body.appendChild(container);
-    });
+        const statusCell = document.createElement("td");
+        const statusDropdown = document.createElement("select");
+        const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
+        statusOptions.forEach(opt => {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt;
+          statusDropdown.appendChild(o);
+        });
+        statusCell.appendChild(statusDropdown);
+        row.appendChild(statusCell);
+
+        const noteInput = document.createElement("textarea");
+        noteInput.rows = 2;
+        noteInput.cols = 30;
+        const noteCell = document.createElement("td");
+        noteCell.appendChild(noteInput);
+        row.appendChild(noteCell);
+
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
+        const submitCell = document.createElement("td");
+        submitCell.appendChild(saveBtn);
+        row.appendChild(submitCell);
+
+        const historyCell = document.createElement("td");
+        row.appendChild(historyCell);
+
+        const actionCell = document.createElement("td");
+        actionCell.innerHTML = `
+          <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
+          <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
+        `;
+        row.appendChild(actionCell);
+
+        saveBtn.onclick = () => {
+          const newNote = noteInput.value.trim();
+          const newStatus = statusDropdown.value;
+
+          if (newNote) {
+            push(ref(db, `${firebasePath}/notes`), {
+              text: newNote,
+              timestamp: new Date().toISOString(),
+              status: newStatus,
+              source: "master"
+            });
+            console.log(`📝 Note saved for ${firebasePath}: ${newNote}`);
+          }
+
+          update(ref(db), {
+            [`${firebasePath}/status`]: newStatus
+          });
+
+          alert("✅ Saved!");
+          noteInput.value = "";
+        };
+
+        onValue(ref(db, firebasePath), (snapshot) => {
+          const data = snapshot.val() || {};
+          const currentStatus = data.status;
+          if (statusOptions.includes(currentStatus)) {
+            statusDropdown.value = currentStatus;
+          }
+
+          const notes = data.notes || [];
+          const noteList = Object.values(notes).sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+          const historyHtml = noteList.map(n =>
+            `<b>${n.status}</b>: ${n.text} <br><small>${n.timestamp}</small><br><br>`
+          ).join("");
+
+          historyCell.innerHTML = historyHtml || "—";
+        });
+
+        table.appendChild(row);
+      });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        document.body.appendChild(table);
+      });
+
+    } catch (err) {
+      console.error("❌ ERROR in master.html script:", err);
+      const msg = document.createElement("p");
+      msg.textContent = "⚠️ Failed to load spreadsheet. Open console for details.";
+      document.body.appendChild(msg);
+    }
   </script>
 </head>
 <body>
