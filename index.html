@@ -11,6 +11,23 @@
     #map { height: 100vh; }
     .legend { background: white; padding: 10px; font-size: 14px; }
   </style>
+
+  <!-- ✅ Load Firebase FIRST -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDp0PoGV9c4chBiJ5MHUl2NyG3vCNG8vYo",
+      authDomain: "advantage-notes.firebaseapp.com",
+      databaseURL: "https://advantage-notes-default-rtdb.firebaseio.com",
+      projectId: "advantage-notes",
+      storageBucket: "advantage-notes.appspot.com",
+      messagingSenderId: "139850639729",
+      appId: "1:139850639729:web:b7f553e06c205536e5d60e"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+  </script>
 </head>
 <body>
 <div id="map"></div>
@@ -20,24 +37,10 @@
 <script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
 
 <script>
-// Initialize map
 const map = L.map('map').setView([39.5, -89.5], 7);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyDp0PoGV9c4chBiJ5MHUl2NyG3vCNG8vYo",
-  authDomain: "advantage-notes.firebaseapp.com",
-  databaseURL: "https://advantage-notes-default-rtdb.firebaseio.com",
-  projectId: "advantage-notes",
-  storageBucket: "advantage-notes.appspot.com",
-  messagingSenderId: "139850639729",
-  appId: "1:139850639729:web:b7f553e06c205536e5d60e"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-// Load GeoJSON dynamically
+// Load GeoJSON filename
 fetch("geojson_filename.txt")
   .then(r => r.text())
   .then(filename => fetch(filename))
@@ -54,46 +57,37 @@ fetch("geojson_filename.txt")
 
     map.fitBounds(parcelLayer.getBounds());
 
-    // Add search
-    const searchControl = new L.Control.Search({
+    const search = new L.Control.Search({
       layer: parcelLayer,
       propertyName: 'Property',
       marker: {
         icon: new L.Icon.Default(),
         animate: true
       },
-      moveToLocation: (latlng, title, map) => {
-        map.setView(latlng, 17);
-      },
+      moveToLocation: (latlng, title, map) => map.setView(latlng, 17),
       initial: false
     });
-    map.addControl(searchControl);
+    map.addControl(search);
   });
 
-// Color logic
 function getColor(status) {
   if (!status) return 'blue';
-  const normalized = status.toLowerCase();
-  if (normalized.includes('conversion')) return 'orange';
-  if (normalized.includes('follow')) return 'blue';
-  if (normalized.includes('not interested')) return 'black';
-  if (normalized.includes('on hold')) return 'purple';
-  return 'gray';
+  const s = status.toLowerCase();
+  if (s.includes("conversion")) return "orange";
+  if (s.includes("follow")) return "blue";
+  if (s.includes("not interested")) return "black";
+  if (s.includes("on hold")) return "purple";
+  return "gray";
 }
 
-// Popup + notes
 function onEachFeature(feature, layer) {
   const props = feature.properties;
-  if (!props) return;
-
   const uid = props.uid || "";
   const status = props.Status || "New";
 
   let popup = `<b>Parcel Info:</b><br>`;
   for (let key in props) {
-    if (props[key]) {
-      popup += `<b>${key}</b>: ${props[key]}<br>`;
-    }
+    if (props[key]) popup += `<b>${key}</b>: ${props[key]}<br>`;
   }
 
   popup += `
@@ -113,38 +107,32 @@ function onEachFeature(feature, layer) {
   layer.bindPopup(popup);
 }
 
-// Save status
 function saveStatus(uid) {
   const newStatus = document.getElementById(`status-${uid}`).value;
   db.ref("status/" + uid).set(newStatus);
-  alert("Status saved");
+  alert("Status updated");
 }
 
-// Save note
 function saveNote(uid) {
-  const noteText = document.getElementById(`note-${uid}`).value;
+  const note = document.getElementById(`note-${uid}`).value;
   const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: noteText, time });
+  db.ref("notes/" + uid).push({ text: note, time });
   alert("Note submitted");
 }
 
-// Legend
+// Add legend
 const legend = L.control({position: 'bottomleft'});
 legend.onAdd = function () {
   const div = L.DomUtil.create('div', 'legend');
   div.innerHTML = `<b>Lead Status</b><br>
-    <i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Conversion<br>
-    <i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Follow Up<br>
-    <i style="background:gray; width:10px; height:10px; display:inline-block;"></i> New<br>
-    <i style="background:black; width:10px; height:10px; display:inline-block;"></i> Not Interested<br>
-    <i style="background:purple; width:10px; height:10px; display:inline-block;"></i> On Hold<br>`;
+    <i style="background:orange;width:10px;height:10px;display:inline-block;"></i> Conversion<br>
+    <i style="background:blue;width:10px;height:10px;display:inline-block;"></i> Follow Up<br>
+    <i style="background:gray;width:10px;height:10px;display:inline-block;"></i> New<br>
+    <i style="background:black;width:10px;height:10px;display:inline-block;"></i> Not Interested<br>
+    <i style="background:purple;width:10px;height:10px;display:inline-block;"></i> On Hold<br>`;
   return div;
 };
 legend.addTo(map);
 </script>
-
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </body>
 </html>
