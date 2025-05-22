@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <title>Advantage Interactive Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
-  <!-- ✅ Leaflet 1.7.1 and Leaflet Search 2.9.7 (Confirmed Working Pair) -->
+
+  <!-- Leaflet 1.7.1 + Leaflet Search 2.9.7 -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.min.css" />
+
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
     .legend {
@@ -27,7 +28,7 @@
 <div id="map"></div>
 <div class="legend" id="legend"></div>
 
-<!-- ✅ Firebase 8 (Inline Config - Confirmed Working) -->
+<!-- Firebase Config -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script>
@@ -44,7 +45,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 </script>
 
-<!-- ✅ Leaflet Scripts (Ordered Before Map Logic) -->
+<!-- Leaflet JS (before map logic) -->
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
@@ -105,7 +106,8 @@ fetch("geojson_filename.txt")
 
     map.fitBounds(geojson.getBounds());
 
-    // ✅ Only run if plugin is defined
+    // ✅ Diagnostic for Leaflet Search plugin
+    console.log("🔍 L.Control.Search type:", typeof L.Control.Search);
     if (typeof L.Control.Search === "function") {
       const search = new L.Control.Search({
         layer: geojson,
@@ -118,6 +120,8 @@ fetch("geojson_filename.txt")
         L.circleMarker(e.latlng, { radius: 8, color: 'red', fill: false }).addTo(map);
       });
       map.addControl(search);
+    } else {
+      console.warn("❌ L.Control.Search not available — plugin did not load.");
     }
   });
 
