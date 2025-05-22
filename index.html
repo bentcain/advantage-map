@@ -6,155 +6,145 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.3/dist/leaflet-search.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.css" />
   <style>
     #map { height: 100vh; }
-    .legend {
-      background: white;
-      padding: 10px;
-      line-height: 18px;
-      color: #333;
-    }
-    .legend span {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      margin-right: 6px;
-    }
+    .legend { background: white; padding: 10px; font-size: 14px; }
   </style>
 </head>
 <body>
 <div id="map"></div>
+
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-<script src="https://unpkg.com/leaflet-search@2.9.3/dist/leaflet-search.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://unpkg.com/leaflet-search@2.9.8/dist/leaflet-search.min.js"></script>
 
 <script>
-// Firebase Config
+// Initialize map
+const map = L.map('map').setView([39.5, -89.5], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyAJDMU7z63a4XAbqJmN1WxCRXlLIAIrYdA",
-  authDomain: "advantage-map.firebaseapp.com",
-  databaseURL: "https://advantage-map-default-rtdb.firebaseio.com",
-  projectId: "advantage-map",
-  storageBucket: "advantage-map.appspot.com",
-  messagingSenderId: "189889031240",
-  appId: "1:189889031240:web:fcffc4a5ef10e75a6975bc"
+  apiKey: "AIzaSyDp0PoGV9c4chBiJ5MHUl2NyG3vCNG8vYo",
+  authDomain: "advantage-notes.firebaseapp.com",
+  databaseURL: "https://advantage-notes-default-rtdb.firebaseio.com",
+  projectId: "advantage-notes",
+  storageBucket: "advantage-notes.appspot.com",
+  messagingSenderId: "139850639729",
+  appId: "1:139850639729:web:b7f553e06c205536e5d60e"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-</script>
 
-<script src="advantage_geojson.geojson" type="application/json" id="geojson-data"></script>
-<script src="uid_map.json" type="application/json" id="uid-map"></script>
+// Load GeoJSON dynamically
+fetch("geojson_filename.txt")
+  .then(r => r.text())
+  .then(filename => fetch(filename))
+  .then(r => r.json())
+  .then(data => {
+    const parcelLayer = L.geoJSON(data, {
+      style: feature => ({
+        color: getColor(feature.properties.Status),
+        weight: 2,
+        fillOpacity: 0.7
+      }),
+      onEachFeature: onEachFeature
+    }).addTo(map);
 
-<script>
-const map = L.map('map').setView([39.8, -89.65], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    map.fitBounds(parcelLayer.getBounds());
 
-// Load UID map
-const uidMap = JSON.parse(document.getElementById("uid-map").textContent);
+    // Add search
+    const searchControl = new L.Control.Search({
+      layer: parcelLayer,
+      propertyName: 'Property',
+      marker: {
+        icon: new L.Icon.Default(),
+        animate: true
+      },
+      moveToLocation: (latlng, title, map) => {
+        map.setView(latlng, 17);
+      },
+      initial: false
+    });
+    map.addControl(searchControl);
+  });
 
 // Color logic
-const statusColors = {
-  "Conversion": "#FFA500",
-  "Follow Up 1": "#1E90FF", "Follow Up 2": "#1E90FF", "Follow Up 3": "#1E90FF",
-  "New": "#00FF00",
-  "Not Interested": "#000000",
-  "On Hold": "#800080"
-};
+function getColor(status) {
+  if (!status) return 'blue';
+  const normalized = status.toLowerCase();
+  if (normalized.includes('conversion')) return 'orange';
+  if (normalized.includes('follow')) return 'blue';
+  if (normalized.includes('not interested')) return 'black';
+  if (normalized.includes('on hold')) return 'purple';
+  return 'gray';
+}
 
-// Build popups
-function buildPopup(props, layer) {
-  const uid = props.uid;
+// Popup + notes
+function onEachFeature(feature, layer) {
+  const props = feature.properties;
+  if (!props) return;
+
+  const uid = props.uid || "";
   const status = props.Status || "New";
-  const projectId = props["Project ID"] || "Unknown";
-  const acres = props.Acreage || "0";
-  const name = `${projectId} - ${acres} acres`;
 
-  let popup = `<b>${name}</b><br>`;
+  let popup = `<b>Parcel Info:</b><br>`;
   for (let key in props) {
-    if (!key.startsWith("_")) {
-      popup += `<b>${key}:</b> ${props[key]}<br>`;
+    if (props[key]) {
+      popup += `<b>${key}</b>: ${props[key]}<br>`;
     }
   }
+
   popup += `
+    <hr>
     <b>Lead Status:</b>
     <select id="status-${uid}">
-      ${Object.keys(statusColors).map(s =>
-        `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`
-      ).join("")}
-    </select><br>
+      ${["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Unqualified", "Not Interested", "Research Needed", "Research Completed", "No Response", "RR2", "RC2", "Unable To Contact", "Conversion"]
+        .map(s => `<option value="${s}" ${s === status ? "selected" : ""}>${s}</option>`).join("")}
+    </select>
     <button onclick="saveStatus('${uid}')">Save</button><br><br>
-    <textarea id="note-${uid}" rows="3" placeholder="Add Note" style="width:100%"></textarea><br>
+    <b>Add Note:</b><br>
+    <textarea id="note-${uid}" rows="2" cols="25"></textarea><br>
     <button onclick="saveNote('${uid}')">Submit Note</button><br><br>
-    <a href="notes.html?uid=${uid}" target="_blank">View Notes</a> |
+    <a href="notes.html?uid=${uid}" target="_blank">View Notes</a><br>
     <a href="master.html" target="_blank">Open Dashboard</a>
   `;
   layer.bindPopup(popup);
 }
 
-function onEachFeature(feature, layer) {
-  const props = feature.properties;
-  if (!props.uid && props["Property"]) {
-    const propKey = Object.values(props).join("|");
-    props.uid = uidMap[propKey];
-  }
-  if (!props.uid) return;
-  const status = props.Status || "New";
-  const color = statusColors[status] || "#3388ff";
-  layer.setStyle({ color, weight: 2, fillOpacity: 0.6 });
-  buildPopup(props, layer);
-}
-
+// Save status
 function saveStatus(uid) {
-  const status = document.getElementById(`status-${uid}`).value;
-  db.ref("status/" + uid).set(status);
+  const newStatus = document.getElementById(`status-${uid}`).value;
+  db.ref("status/" + uid).set(newStatus);
+  alert("Status saved");
 }
 
+// Save note
 function saveNote(uid) {
-  const note = document.getElementById(`note-${uid}`).value;
+  const noteText = document.getElementById(`note-${uid}`).value;
   const time = new Date().toISOString();
-  db.ref("notes/" + uid).push({ text: note, time });
+  db.ref("notes/" + uid).push({ text: noteText, time });
+  alert("Note submitted");
 }
 
-// Load GeoJSON
-fetch("advantage_geojson.geojson")
-  .then(res => res.json())
-  .then(data => {
-    const layer = L.geoJSON(data, {
-      onEachFeature
-    }).addTo(map);
-
-    // SEARCH BAR
-    const search = new L.Control.Search({
-      layer,
-      propertyName: 'Property',
-      initial: false,
-      zoom: 15,
-      marker: false
-    });
-    map.addControl(search);
-
-    search.on('search:locationfound', e => {
-      e.layer.openPopup();
-    });
-
-    // LEGEND
-    const legend = L.control({ position: "bottomleft" });
-    legend.onAdd = function () {
-      const div = L.DomUtil.create("div", "legend");
-      div.innerHTML = "<strong>Lead Status</strong><br>";
-      for (let key in statusColors) {
-        if (["Follow Up 1", "Follow Up 2", "Follow Up 3"].includes(key)) continue;
-        const label = key === "Follow Up 1" ? "Follow Up" : key;
-        div.innerHTML += `<span style="background:${statusColors[key]}"></span>${label}<br>`;
-      }
-      return div;
-    };
-    legend.addTo(map);
-  });
+// Legend
+const legend = L.control({position: 'bottomleft'});
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = `<b>Lead Status</b><br>
+    <i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Conversion<br>
+    <i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Follow Up<br>
+    <i style="background:gray; width:10px; height:10px; display:inline-block;"></i> New<br>
+    <i style="background:black; width:10px; height:10px; display:inline-block;"></i> Not Interested<br>
+    <i style="background:purple; width:10px; height:10px; display:inline-block;"></i> On Hold<br>`;
+  return div;
+};
+legend.addTo(map);
 </script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </body>
 </html>
