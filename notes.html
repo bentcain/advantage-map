@@ -5,7 +5,6 @@
   <title>Parcel Notes Dashboard</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-  <script src="firebase-config.js"></script>
   <style>
     body {
       font-family: sans-serif;
@@ -44,6 +43,17 @@
   </table>
 
   <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+      authDomain: "parcel-notes-system.firebaseapp.com",
+      projectId: "parcel-notes-system",
+      storageBucket: "parcel-notes-system.appspot.com",
+      messagingSenderId: "538142262863",
+      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+      measurementId: "G-GQ3CQ9EKPH",
+      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
+    };
+
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
@@ -53,12 +63,10 @@
     function renderRow(uid, data) {
       const row = document.createElement("tr");
 
-      // UID
       const uidCell = document.createElement("td");
       uidCell.textContent = uid;
       row.appendChild(uidCell);
 
-      // Status dropdown
       const statusCell = document.createElement("td");
       const statusSelect = document.createElement("select");
       statusOptions.forEach(option => {
@@ -71,13 +79,11 @@
       statusCell.appendChild(statusSelect);
       row.appendChild(statusCell);
 
-      // Note entry
       const noteCell = document.createElement("td");
       const noteInput = document.createElement("textarea");
       noteCell.appendChild(noteInput);
       row.appendChild(noteCell);
 
-      // Submit button
       const saveCell = document.createElement("td");
       const saveBtn = document.createElement("button");
       saveBtn.textContent = "Save";
@@ -110,7 +116,6 @@
       saveCell.appendChild(saveBtn);
       row.appendChild(saveCell);
 
-      // Note history
       const historyCell = document.createElement("td");
       const notes = data.notes || [];
       if (notes.length === 0) {
