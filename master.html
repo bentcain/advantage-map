@@ -4,6 +4,13 @@
   <title>Parcel Master Spreadsheet</title>
   <meta charset="utf-8" />
   <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #searchInput {
+      margin-bottom: 10px;
+      padding: 6px;
+      font-size: 16px;
+      width: 100%;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -13,9 +20,12 @@
       border: 1px solid #ccc;
       vertical-align: top;
     }
-    textarea {
-      width: 95%;
-    }
+    tr.status-Conversion { background-color: #fdd; }
+    tr.status-FollowUp { background-color: #ffe4cc; }
+    tr.status-NotInterested { background-color: #eee; }
+    tr.status-New { background-color: #ddeeff; }
+    tr.status-OnHold { background-color: #e0f7e0; }
+    textarea { width: 95%; }
   </style>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
@@ -35,7 +45,12 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    async function loadAndRender() {
+    document.addEventListener("DOMContentLoaded", async () => {
+      const searchInput = document.createElement("input");
+      searchInput.id = "searchInput";
+      searchInput.placeholder = "Search parcels...";
+      document.body.prepend(searchInput);
+
       try {
         const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
         const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
@@ -57,7 +72,7 @@
         });
         table.appendChild(headerRow);
 
-        geojson.features.forEach(feature => {
+        const rows = geojson.features.map(feature => {
           const row = document.createElement("tr");
           const uid = feature.properties.uid || "";
           const firebasePath = `parcel_${uid}`;
@@ -145,18 +160,45 @@
             historyCell.innerHTML = historyHtml || "—";
           });
 
-          table.appendChild(row);
+          row.dataset.status = feature.properties.Status || "";
+          row.classList.add("status-" + normalizeStatus(row.dataset.status));
+          row.setAttribute("data-uid", uid);
+          return { row, status: row.dataset.status };
         });
 
+        // Sorting function based on status priority
+        const statusOrder = ["Conversion", "Follow Up", "Not Interested", "New", "On Hold"];
+        rows.sort((a, b) => {
+          const aVal = statusOrder.findIndex(s => a.status.includes(s));
+          const bVal = statusOrder.findIndex(s => b.status.includes(s));
+          return aVal - bVal;
+        });
+
+        rows.forEach(({ row }) => table.appendChild(row));
         document.body.appendChild(table);
+
+        searchInput.addEventListener("input", () => {
+          const val = searchInput.value.toLowerCase();
+          rows.forEach(({ row }) => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(val) ? "" : "none";
+          });
+        });
+
+        function normalizeStatus(status) {
+          if (!status) return "";
+          const s = status.toLowerCase();
+          if (s.includes("follow up")) return "FollowUp";
+          if (s.includes("not interested")) return "NotInterested";
+          if (s.includes("on hold")) return "OnHold";
+          return status.replace(/\s+/g, "");
+        }
 
       } catch (err) {
         console.error("❌ ERROR loading master.html data. Details:", err);
         document.body.insertAdjacentHTML("beforeend", "<p style='color:red;'⚠️ Failed to load GeoJSON or UID map. Open browser dev console for more info.</p>");
       }
-    }
-
-    document.addEventListener("DOMContentLoaded", loadAndRender);
+    });
   </script>
 </head>
 <body>
