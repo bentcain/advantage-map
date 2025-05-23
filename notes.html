@@ -98,11 +98,12 @@
             timestamp: new Date().toISOString()
           };
           db.ref(uid).child("notes").once("value").then(snapshot => {
-            const notes = snapshot.val() || [];
-            notes.push(newNote);
+            const existingNotes = snapshot.val() || [];
+            const noteArray = Array.isArray(existingNotes) ? existingNotes : Object.values(existingNotes);
+            noteArray.push(newNote);
             db.ref(uid).update({
               status: statusSelect.value,
-              notes: notes
+              notes: noteArray
             });
             alert("Note saved!");
             location.reload();
@@ -117,11 +118,12 @@
       row.appendChild(saveCell);
 
       const historyCell = document.createElement("td");
-      const notes = data.notes || [];
-      if (notes.length === 0) {
+      const rawNotes = data.notes || [];
+      const noteArray = Array.isArray(rawNotes) ? rawNotes : Object.values(rawNotes);
+      if (noteArray.length === 0) {
         historyCell.innerHTML = "<em>No notes</em>";
       } else {
-        historyCell.innerHTML = notes.map(note =>
+        historyCell.innerHTML = noteArray.map(note =>
           `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
         ).join("");
       }
