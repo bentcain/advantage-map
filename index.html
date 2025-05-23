@@ -22,9 +22,8 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
-    #notes-link {
+    #notes-link, #master-link {
       position: absolute;
-      bottom: 15px;
       left: 15px;
       background: white;
       padding: 6px 12px;
@@ -33,16 +32,20 @@
       z-index: 1000;
       box-shadow: 0 0 5px rgba(0,0,0,0.2);
     }
+    #master-link { bottom: 50px; }
+    #notes-link { bottom: 15px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div class="legend" id="status-legend"></div>
+  <a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
   <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 
+  <!-- Full original working logic preserved below -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
     import { getDatabase, ref, push, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
@@ -135,7 +138,7 @@
             layer.on("popupopen", () => {
               setTimeout(() => {
                 const el = document.getElementById(`status-${uid}`);
-                if (el) el.focus(); // accessibility focus
+                if (el) el.focus();
               }, 100);
             });
           }
@@ -194,7 +197,7 @@
             if (layer.feature && layer.feature.properties && layer.feature.properties.uid === uid) {
               const newColor = getStatusColor(newStatus);
               layer.setStyle({ fillColor: newColor });
-              layer.feature.properties.Status = newStatus; // keep in sync
+              layer.feature.properties.Status = newStatus;
             }
           });
         };
