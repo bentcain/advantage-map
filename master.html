@@ -148,17 +148,15 @@
           table.appendChild(row);
         });
 
-        document.addEventListener("DOMContentLoaded", () => {
-          document.body.appendChild(table);
-        });
+        document.body.appendChild(table);
 
       } catch (err) {
         console.error("❌ ERROR loading master.html data. Details:", err);
-        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;'⚠️ Failed to load GeoJSON or UID map. Check the console (Inspect → Console tab) for details.</p>");
+        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;'⚠️ Failed to load GeoJSON or UID map. Open browser dev console for more info.</p>");
       }
     }
 
-    loadAndRender();
+    document.addEventListener("DOMContentLoaded", loadAndRender);
   </script>
 </head>
 <body>
