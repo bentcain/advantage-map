@@ -35,134 +35,130 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    try {
-      const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
-      console.log("✅ GeoJSON filename loaded:", geojsonFilename.trim());
+    async function loadAndRender() {
+      try {
+        const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
+        const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
+        const uidMap = await fetch("uid_map.json").then(r => r.json());
 
-      const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
-      console.log("✅ GeoJSON data loaded. Features:", geojson.features.length);
+        const table = document.createElement("table");
+        const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
 
-      const uidMap = await fetch("uid_map.json").then(r => r.json());
-      console.log("✅ UID Map loaded. Keys:", Object.keys(uidMap).length);
+        const allKeys = new Set();
+        geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
+        const dynamicFields = Array.from(allKeys).sort();
+        dynamicFields.forEach(k => headers.unshift(k));
 
-      const table = document.createElement("table");
-      const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
-
-      const allKeys = new Set();
-      geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
-      const dynamicFields = Array.from(allKeys).sort();
-      dynamicFields.forEach(k => headers.unshift(k)); // Add before UID
-
-      const headerRow = document.createElement("tr");
-      headers.forEach(h => {
-        const th = document.createElement("th");
-        th.textContent = h;
-        headerRow.appendChild(th);
-      });
-      table.appendChild(headerRow);
-
-      geojson.features.forEach(feature => {
-        const row = document.createElement("tr");
-        const uid = feature.properties.uid || "";
-        const firebasePath = `parcel_${uid}`;
-
-        // Add dynamic fields
-        dynamicFields.forEach(k => {
-          const td = document.createElement("td");
-          td.textContent = feature.properties[k] || "";
-          row.appendChild(td);
+        const headerRow = document.createElement("tr");
+        headers.forEach(h => {
+          const th = document.createElement("th");
+          th.textContent = h;
+          headerRow.appendChild(th);
         });
+        table.appendChild(headerRow);
 
-        const uidCell = document.createElement("td");
-        uidCell.textContent = firebasePath;
-        row.appendChild(uidCell);
+        geojson.features.forEach(feature => {
+          const row = document.createElement("tr");
+          const uid = feature.properties.uid || "";
+          const firebasePath = `parcel_${uid}`;
 
-        const statusCell = document.createElement("td");
-        const statusDropdown = document.createElement("select");
-        const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
-        statusOptions.forEach(opt => {
-          const o = document.createElement("option");
-          o.value = opt;
-          o.textContent = opt;
-          statusDropdown.appendChild(o);
-        });
-        statusCell.appendChild(statusDropdown);
-        row.appendChild(statusCell);
-
-        const noteInput = document.createElement("textarea");
-        noteInput.rows = 2;
-        noteInput.cols = 30;
-        const noteCell = document.createElement("td");
-        noteCell.appendChild(noteInput);
-        row.appendChild(noteCell);
-
-        const saveBtn = document.createElement("button");
-        saveBtn.textContent = "Save";
-        const submitCell = document.createElement("td");
-        submitCell.appendChild(saveBtn);
-        row.appendChild(submitCell);
-
-        const historyCell = document.createElement("td");
-        row.appendChild(historyCell);
-
-        const actionCell = document.createElement("td");
-        actionCell.innerHTML = `
-          <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
-          <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
-        `;
-        row.appendChild(actionCell);
-
-        saveBtn.onclick = () => {
-          const newNote = noteInput.value.trim();
-          const newStatus = statusDropdown.value;
-
-          if (newNote) {
-            push(ref(db, `${firebasePath}/notes`), {
-              text: newNote,
-              timestamp: new Date().toISOString(),
-              status: newStatus,
-              source: "master"
-            });
-            console.log(`📝 Note saved for ${firebasePath}: ${newNote}`);
-          }
-
-          update(ref(db), {
-            [`${firebasePath}/status`]: newStatus
+          dynamicFields.forEach(k => {
+            const td = document.createElement("td");
+            td.textContent = feature.properties[k] || "";
+            row.appendChild(td);
           });
 
-          alert("✅ Saved!");
-          noteInput.value = "";
-        };
+          const uidCell = document.createElement("td");
+          uidCell.textContent = firebasePath;
+          row.appendChild(uidCell);
 
-        onValue(ref(db, firebasePath), (snapshot) => {
-          const data = snapshot.val() || {};
-          const currentStatus = data.status;
-          if (statusOptions.includes(currentStatus)) {
-            statusDropdown.value = currentStatus;
-          }
+          const statusCell = document.createElement("td");
+          const statusDropdown = document.createElement("select");
+          const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
+          statusOptions.forEach(opt => {
+            const o = document.createElement("option");
+            o.value = opt;
+            o.textContent = opt;
+            statusDropdown.appendChild(o);
+          });
+          statusCell.appendChild(statusDropdown);
+          row.appendChild(statusCell);
 
-          const notes = data.notes || [];
-          const noteList = Object.values(notes).sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
-          const historyHtml = noteList.map(n =>
-            `<b>${n.status}</b>: ${n.text} <br><small>${n.timestamp}</small><br><br>`
-          ).join("");
+          const noteInput = document.createElement("textarea");
+          noteInput.rows = 2;
+          noteInput.cols = 30;
+          const noteCell = document.createElement("td");
+          noteCell.appendChild(noteInput);
+          row.appendChild(noteCell);
 
-          historyCell.innerHTML = historyHtml || "—";
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "Save";
+          const submitCell = document.createElement("td");
+          submitCell.appendChild(saveBtn);
+          row.appendChild(submitCell);
+
+          const historyCell = document.createElement("td");
+          row.appendChild(historyCell);
+
+          const actionCell = document.createElement("td");
+          actionCell.innerHTML = `
+            <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
+            <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
+          `;
+          row.appendChild(actionCell);
+
+          saveBtn.onclick = () => {
+            const newNote = noteInput.value.trim();
+            const newStatus = statusDropdown.value;
+
+            if (newNote) {
+              push(ref(db, `${firebasePath}/notes`), {
+                text: newNote,
+                timestamp: new Date().toISOString(),
+                status: newStatus,
+                source: "master"
+              });
+              console.log(`📝 Note saved for ${firebasePath}: ${newNote}`);
+            }
+
+            update(ref(db), {
+              [`${firebasePath}/status`]: newStatus
+            });
+
+            alert("✅ Saved!");
+            noteInput.value = "";
+          };
+
+          onValue(ref(db, firebasePath), (snapshot) => {
+            const data = snapshot.val() || {};
+            const currentStatus = data.status;
+            if (statusOptions.includes(currentStatus)) {
+              statusDropdown.value = currentStatus;
+            }
+
+            const notes = data.notes || [];
+            const noteList = Object.values(notes).sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+            const historyHtml = noteList.map(n =>
+              `<b>${n.status}</b>: ${n.text} <br><small>${n.timestamp}</small><br><br>`
+            ).join("");
+
+            historyCell.innerHTML = historyHtml || "—";
+          });
+
+          table.appendChild(row);
         });
 
-        table.appendChild(row);
-      });
+        document.addEventListener("DOMContentLoaded", () => {
+          document.body.appendChild(table);
+        });
 
-      document.addEventListener("DOMContentLoaded", () => {
-        document.body.appendChild(table);
-      });
-
-    } catch (err) {
-      console.error("❌ ERROR in master.html script:", err);
-      const msg = document.createElement("p");
-      msg.textContent = "⚠️ Failed to load spreadsheet. Open console for details.";
-      document.body.appendChild(msg);
+      } catch (err) {
+        console.error("❌ ERROR loading master.html data. Details:", err);
+        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;'⚠️ Failed to load GeoJSON or UID map. Check the console (Inspect → Console tab) for details.</p>");
+      }
     }
+
+    loadAndRender();
   </script>
 </head>
 <body>
