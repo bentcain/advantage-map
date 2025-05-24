@@ -1,9 +1,9 @@
-<!-- version: master.html - rebuilt with popup-aligned layout + Firebase sync - 2025-05-24 -->
+<!-- version: master.html - synced status patch + deduped UID - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Master Dashboard</title>
+  <title>Master Parcel Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body { font-family: sans-serif; margin: 0; padding: 1rem; }
@@ -70,7 +70,7 @@ const renderTable = (features, fbData) => {
   const keys = new Set();
   features.forEach(f => Object.keys(f.properties).forEach(k => keys.add(k)));
 
-  const columns = Array.from(keys).filter(k => k !== "searchable" && k !== "Status");
+  const columns = Array.from(keys).filter(k => k !== "searchable" && k !== "Status" && k !== "uid");
   columns.unshift("uid");
   columns.push("Status", "New Note", "Save");
 
@@ -95,13 +95,11 @@ const renderTable = (features, fbData) => {
       if (col === "Status") {
         html += `<td>
           <select class="status" data-uid="${uid}">
-            <option>New</option>
-            <option>Follow Up 1</option>
-            <option>Follow Up 2</option>
-            <option>Follow Up 3</option>
-            <option>On Hold</option>
-            <option>Conversion</option>
-            <option>Not Interested</option>
+            <option ${props.Status === "New" ? "selected" : ""}>New</option>
+            <option ${props.Status.startsWith("Follow Up") ? "selected" : ""}>Follow Up</option>
+            <option ${props.Status === "On Hold" ? "selected" : ""}>On Hold</option>
+            <option ${props.Status === "Conversion" ? "selected" : ""}>Conversion</option>
+            <option ${props.Status === "Not Interested" ? "selected" : ""}>Not Interested</option>
           </select>
         </td>`;
       } else if (col === "New Note") {
@@ -118,15 +116,6 @@ const renderTable = (features, fbData) => {
   html += `</tbody></table>`;
   container.innerHTML = html;
 
-  // Preselect statuses
-  document.querySelectorAll("select.status").forEach(sel => {
-    const uid = sel.dataset.uid;
-    const row = document.querySelector(`tr[data-uid='${uid}']`);
-    const statusCell = row.querySelector("td:nth-last-child(3)");
-    const current = statusCell && statusCell.querySelector("select").value;
-    sel.value = current;
-  });
-
   document.querySelectorAll(".save").forEach(btn => {
     btn.addEventListener("click", () => {
       const uid = btn.dataset.uid;
@@ -135,7 +124,7 @@ const renderTable = (features, fbData) => {
       const newNote = noteEl.value.trim();
       const newStatus = statusEl.value;
 
-      if (!newNote && !newStatus) return;
+      if (!noteEl && !statusEl) return;
 
       get(child(ref(db), `${uid}/notes`)).then(snapshot => {
         const notes = snapshot.val() || [];
