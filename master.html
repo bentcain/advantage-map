@@ -1,4 +1,6 @@
-<!-- version: master.html - Phase 3b: filter-aware status sort - 2025-05-24 -->
+// entire file updated with final sort-on-load enhancement
+
+<!-- version: master.html - Phase 3c: sort by status on load - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,17 +46,6 @@ const statusOrder = {
   "on hold": 5
 };
 
-const statusColors = {
-  "New": "row-color-New",
-  "Follow Up": "row-color-FollowUp",
-  "Follow Up 1": "row-color-FollowUp",
-  "Follow Up 2": "row-color-FollowUp",
-  "Follow Up 3": "row-color-FollowUp",
-  "On Hold": "row-color-OnHold",
-  "Conversion": "row-color-Conversion",
-  "Not Interested": "row-color-NotInterested"
-};
-
 const geojsonFile = "geojson_filename.txt";
 let allRows = [], tableColumns = [];
 
@@ -62,6 +53,14 @@ const fetchGeoJSON = async () => {
   const filename = await fetch(geojsonFile).then(res => res.text());
   return fetch(filename.trim()).then(res => res.json());
 };
+
+function sortRowArray(rows) {
+  return rows.sort((a, b) => {
+    const s1 = a.Status?.toLowerCase() || "z";
+    const s2 = b.Status?.toLowerCase() || "z";
+    return (statusOrder[s1] || 99) - (statusOrder[s2] || 99);
+  });
+}
 
 function sortTableBody() {
   const tbody = document.querySelector("tbody");
@@ -91,7 +90,7 @@ const renderTable = (features, fbData) => {
     f.properties.notes = fb.notes || [];
   });
 
-  allRows = features.map(f => f.properties);
+  allRows = sortRowArray(features.map(f => f.properties));
 
   const dropdowns = columns.map(col => {
     if (col === "New Note" || col === "Save") return `<th>${col}</th>`;
@@ -108,7 +107,7 @@ const renderTable = (features, fbData) => {
 
   for (const row of allRows) {
     const uid = row.uid;
-    const rowClass = statusColors[row.Status] || "";
+    const rowClass = statusOrder[row.Status?.toLowerCase()] ? `row-color-${row.Status.split(" ")[0]}` : "";
 
     html += `<tr class="${rowClass}" data-uid="${uid}">`;
     columns.forEach(col => {
