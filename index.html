@@ -1,3 +1,4 @@
+<!-- version: index.html diagnostic-enhanced full-featured Advantage build 2025-05-23 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -109,10 +110,13 @@
             const notesLink = `notes.html?uid=${uid}`;
             const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
 
+            console.log(`🔍 UID: ${uid}`);
             get(child(ref(db), uid)).then(snapshot => {
               const fb = snapshot.val() || {};
               const currentStatus = fb.status || props.Status || "New";
               const notes = fb.notes || [];
+
+              console.log(`📂 Firebase Path: ${uid}, Loaded Status: ${currentStatus}`);
 
               popupContent += `<tr><td><strong>Status</strong></td><td>
                 <select id="status-${uid}">
