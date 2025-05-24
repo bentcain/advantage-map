@@ -1,6 +1,4 @@
-// entire file updated with final sort-on-load enhancement
-
-<!-- version: master.html - Phase 3c: sort by status on load - 2025-05-24 -->
+<!-- version: master.html - Phase 4: notes link integration - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -122,7 +120,9 @@ const renderTable = (features, fbData) => {
           </select>
         </td>`;
       } else if (col === "New Note") {
-        html += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea></td>`;
+        html += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea>
+        <div><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></div>
+        </td>`;
       } else if (col === "Save") {
         html += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
       } else {
