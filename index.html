@@ -1,4 +1,4 @@
-<!-- version: index.html - visual revert patch applied - 2025-05-23 -->
+<!-- version: index.html - full Firebase sync patch - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -84,7 +84,18 @@
       .then(res => res.text())
       .then(file => fetch(file.trim()))
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
+        const snapshot = await get(ref(db));
+        const fbData = snapshot.val() || {};
+
+        for (let feature of data.features) {
+          const uid = feature.properties.uid;
+          const fbStatus = fbData[uid]?.status;
+          if (fbStatus) {
+            feature.properties.Status = fbStatus;
+          }
+        }
+
         const geoLayer = L.geoJSON(data, {
           style: feature => ({
             color: "#444",
@@ -108,15 +119,11 @@
             const notesLink = `notes.html?uid=${uid}`;
             const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
 
-            console.log(`🔍 UID: ${uid}`);
             get(child(ref(db), uid)).then(snapshot => {
               const fb = snapshot.val() || {};
               const currentStatus = fb.status || props.Status || "New";
               const notes = fb.notes || [];
 
-              console.log(`📂 Firebase Path: ${uid}, Loaded Status: ${currentStatus}`);
-
-              // 🔁 Overwrite properties + style to prevent visual revert
               feature.properties.Status = currentStatus;
               layer.setStyle({ fillColor: getStatusColor(currentStatus) });
 
