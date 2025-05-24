@@ -1,4 +1,4 @@
-<!-- version: master.html - Phase 1 patch: sorting fix + search debounce - 2025-05-24 -->
+<!-- version: master.html - Phase 3: dropdown filters + scoped search - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,7 +22,7 @@
 </head>
 <body>
 <h2>📋 Master Parcel Dashboard</h2>
-<input type="text" id="searchBox" placeholder="Search by any field..." />
+<input type="text" id="searchBox" placeholder="Search within filtered rows..." />
 <div id="tableContainer">Loading...</div>
 
 <script type="module">
@@ -56,6 +56,7 @@ const statusColors = {
 };
 
 const geojsonFile = "geojson_filename.txt";
+let allRows = [];
 
 const fetchGeoJSON = async () => {
   const filename = await fetch(geojsonFile).then(res => res.text());
@@ -86,23 +87,35 @@ const renderTable = (features, fbData) => {
 
   features.sort((a, b) => sortByStatus(a.properties, b.properties));
 
-  let html = `<table><thead><tr>${columns.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
+  allRows = features.map(f => f.properties);
 
-  for (const feature of features) {
-    const props = feature.properties;
-    const uid = props.uid;
-    const rowClass = statusColors[props.Status] || "";
+  const dropdowns = columns.map(col => {
+    if (col === "New Note" || col === "Save") return `<th>${col}</th>`;
+    const values = [...new Set(allRows.map(row => row[col]).filter(Boolean))].sort();
+    return `<th>
+      <select data-col="${col}" class="filter">
+        <option value="">All ${col}</option>
+        ${values.map(v => `<option>${v}</option>`).join("")}
+      </select>
+    </th>`;
+  }).join("");
+
+  let html = `<table><thead><tr>${dropdowns}</tr><tr>${columns.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
+
+  for (const row of allRows) {
+    const uid = row.uid;
+    const rowClass = statusColors[row.Status] || "";
 
     html += `<tr class="${rowClass}" data-uid="${uid}">`;
     columns.forEach(col => {
       if (col === "Status") {
         html += `<td>
           <select class="status" data-uid="${uid}">
-            <option ${props.Status === "New" ? "selected" : ""}>New</option>
-            <option ${props.Status.startsWith("Follow Up") ? "selected" : ""}>Follow Up</option>
-            <option ${props.Status === "On Hold" ? "selected" : ""}>On Hold</option>
-            <option ${props.Status === "Conversion" ? "selected" : ""}>Conversion</option>
-            <option ${props.Status === "Not Interested" ? "selected" : ""}>Not Interested</option>
+            <option ${row.Status === "New" ? "selected" : ""}>New</option>
+            <option ${row.Status.startsWith("Follow Up") ? "selected" : ""}>Follow Up</option>
+            <option ${row.Status === "On Hold" ? "selected" : ""}>On Hold</option>
+            <option ${row.Status === "Conversion" ? "selected" : ""}>Conversion</option>
+            <option ${row.Status === "Not Interested" ? "selected" : ""}>Not Interested</option>
           </select>
         </td>`;
       } else if (col === "New Note") {
@@ -110,7 +123,7 @@ const renderTable = (features, fbData) => {
       } else if (col === "Save") {
         html += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
       } else {
-        html += `<td>${props[col] || ""}</td>`;
+        html += `<td>${row[col] || ""}</td>`;
       }
     });
     html += `</tr>`;
@@ -141,19 +154,44 @@ const renderTable = (features, fbData) => {
       });
     });
   });
+
+  document.querySelectorAll(".filter").forEach(drop => {
+    drop.addEventListener("change", applyFilters);
+  });
 };
 
-// Debounced search filter
+function applyFilters() {
+  const terms = {};
+  document.querySelectorAll(".filter").forEach(sel => {
+    const col = sel.dataset.col;
+    const val = sel.value;
+    if (val) terms[col] = val;
+  });
+
+  document.querySelectorAll("tbody tr").forEach(row => {
+    const cells = row.querySelectorAll("td");
+    let visible = true;
+    for (const key in terms) {
+      const idx = Array.from(row.parentNode.parentNode.querySelectorAll("thead tr:last-child th")).findIndex(th => th.textContent === key);
+      if (!row.cells[idx] || !row.cells[idx].textContent.includes(terms[key])) visible = false;
+    }
+    row.style.display = visible ? "" : "none";
+  });
+
+  searchFilter();
+}
+
 let debounceTimer;
-const searchFilter = () => {
+function searchFilter() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     const term = document.getElementById("searchBox").value.toLowerCase();
     document.querySelectorAll("tbody tr").forEach(row => {
+      if (row.style.display === "none") return;
       row.style.display = Array.from(row.cells).some(td => td.innerText.toLowerCase().includes(term)) ? "" : "none";
     });
   }, 250);
-};
+}
 
 document.getElementById("searchBox").addEventListener("input", searchFilter);
 
