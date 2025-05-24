@@ -1,4 +1,4 @@
-<!-- version: index.html - popup live Firebase requery - 2025-05-24 -->
+<!-- version: index.html - popup fixed + dynamic Firebase sync - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -111,6 +111,9 @@
 
             let notesLink = `notes.html?uid=${uid}`;
             let streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
+
+            // Bind an empty popup so Leaflet opens it on click
+            layer.bindPopup("Loading...");
 
             layer.on("popupopen", () => {
               get(child(ref(db), uid)).then(snapshot => {
