@@ -1,208 +1,167 @@
+<!-- version: master.html - rebuilt with popup-aligned layout + Firebase sync - 2025-05-24 -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Parcel Master Spreadsheet</title>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8" />
+  <title>Master Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #searchInput {
-      margin-bottom: 10px;
-      padding: 6px;
-      font-size: 16px;
-      width: 100%;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 6px;
-      border: 1px solid #ccc;
-      vertical-align: top;
-    }
-    tr.status-Conversion { background-color: #fdd; }
-    tr.status-FollowUp { background-color: #ffe4cc; }
-    tr.status-NotInterested { background-color: #eee; }
-    tr.status-New { background-color: #ddeeff; }
-    tr.status-OnHold { background-color: #e0f7e0; }
-    textarea { width: 95%; }
+    body { font-family: sans-serif; margin: 0; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
+    tr:hover { background-color: #f1f1f1; }
+    input[type="text"] { padding: 6px; width: 300px; margin-bottom: 10px; }
+    select, textarea { width: 100%; font-size: 14px; }
+    .row-color-New { background: #e0effa; }
+    .row-color-FollowUp { background: #ffe7cc; }
+    .row-color-OnHold { background: #dbf0db; }
+    .row-color-Conversion { background: #fbdada; }
+    .row-color-NotInterested { background: #eeeeee; }
   </style>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      measurementId: "G-GQ3CQ9EKPH",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    document.addEventListener("DOMContentLoaded", async () => {
-      const searchInput = document.createElement("input");
-      searchInput.id = "searchInput";
-      searchInput.placeholder = "Search parcels...";
-      document.body.prepend(searchInput);
-
-      try {
-        const geojsonFilename = await fetch("geojson_filename.txt").then(r => r.text());
-        const geojson = await fetch(geojsonFilename.trim()).then(r => r.json());
-        const uidMap = await fetch("uid_map.json").then(r => r.json());
-
-        const table = document.createElement("table");
-        const headers = ["UID", "Status", "New Note", "Submit", "Note History", "Actions"];
-
-        const allKeys = new Set();
-        geojson.features.forEach(f => Object.keys(f.properties).forEach(k => allKeys.add(k)));
-        const dynamicFields = Array.from(allKeys).sort();
-        dynamicFields.forEach(k => headers.unshift(k));
-
-        const headerRow = document.createElement("tr");
-        headers.forEach(h => {
-          const th = document.createElement("th");
-          th.textContent = h;
-          headerRow.appendChild(th);
-        });
-        table.appendChild(headerRow);
-
-        const rows = geojson.features.map(feature => {
-          const row = document.createElement("tr");
-          const uid = feature.properties.uid || "";
-          const firebasePath = `parcel_${uid}`;
-
-          dynamicFields.forEach(k => {
-            const td = document.createElement("td");
-            td.textContent = feature.properties[k] || "";
-            row.appendChild(td);
-          });
-
-          const uidCell = document.createElement("td");
-          uidCell.textContent = firebasePath;
-          row.appendChild(uidCell);
-
-          const statusCell = document.createElement("td");
-          const statusDropdown = document.createElement("select");
-          const statusOptions = ["New", "New with Contact", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Not Interested", "Conversion"];
-          statusOptions.forEach(opt => {
-            const o = document.createElement("option");
-            o.value = opt;
-            o.textContent = opt;
-            statusDropdown.appendChild(o);
-          });
-          statusCell.appendChild(statusDropdown);
-          row.appendChild(statusCell);
-
-          const noteInput = document.createElement("textarea");
-          noteInput.rows = 2;
-          noteInput.cols = 30;
-          const noteCell = document.createElement("td");
-          noteCell.appendChild(noteInput);
-          row.appendChild(noteCell);
-
-          const saveBtn = document.createElement("button");
-          saveBtn.textContent = "Save";
-          const submitCell = document.createElement("td");
-          submitCell.appendChild(saveBtn);
-          row.appendChild(submitCell);
-
-          const historyCell = document.createElement("td");
-          row.appendChild(historyCell);
-
-          const actionCell = document.createElement("td");
-          actionCell.innerHTML = `
-            <button onclick="window.open('index.html?highlight=${uidMap[uid]}', '_blank')">Zoom to Parcel</button>
-            <button onclick="window.open('notes.html?uid=parcel_${uid}', '_blank')">View Parcel Notes</button>
-          `;
-          row.appendChild(actionCell);
-
-          saveBtn.onclick = () => {
-            const newNote = noteInput.value.trim();
-            const newStatus = statusDropdown.value;
-
-            if (newNote) {
-              push(ref(db, `${firebasePath}/notes`), {
-                text: newNote,
-                timestamp: new Date().toISOString(),
-                status: newStatus,
-                source: "master"
-              });
-              console.log(`📝 Note saved for ${firebasePath}: ${newNote}`);
-            }
-
-            update(ref(db), {
-              [`${firebasePath}/status`]: newStatus
-            });
-
-            alert("✅ Saved!");
-            noteInput.value = "";
-          };
-
-          onValue(ref(db, firebasePath), (snapshot) => {
-            const data = snapshot.val() || {};
-            const currentStatus = data.status;
-            if (statusOptions.includes(currentStatus)) {
-              statusDropdown.value = currentStatus;
-            }
-
-            const notes = data.notes || [];
-            const noteList = Object.values(notes).sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
-            const historyHtml = noteList.map(n =>
-              `<b>${n.status}</b>: ${n.text} <br><small>${n.timestamp}</small><br><br>`
-            ).join("");
-
-            historyCell.innerHTML = historyHtml || "—";
-          });
-
-          row.dataset.status = feature.properties.Status || "";
-          row.classList.add("status-" + normalizeStatus(row.dataset.status));
-          row.setAttribute("data-uid", uid);
-          return { row, status: row.dataset.status };
-        });
-
-        // Sorting function based on status priority
-        const statusOrder = ["Conversion", "Follow Up", "Not Interested", "New", "On Hold"];
-        rows.sort((a, b) => {
-          const aVal = statusOrder.findIndex(s => a.status.includes(s));
-          const bVal = statusOrder.findIndex(s => b.status.includes(s));
-          return aVal - bVal;
-        });
-
-        rows.forEach(({ row }) => table.appendChild(row));
-        document.body.appendChild(table);
-
-        searchInput.addEventListener("input", () => {
-          const val = searchInput.value.toLowerCase();
-          rows.forEach(({ row }) => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(val) ? "" : "none";
-          });
-        });
-
-        function normalizeStatus(status) {
-          if (!status) return "";
-          const s = status.toLowerCase();
-          if (s.includes("follow up")) return "FollowUp";
-          if (s.includes("not interested")) return "NotInterested";
-          if (s.includes("on hold")) return "OnHold";
-          return status.replace(/\s+/g, "");
-        }
-
-      } catch (err) {
-        console.error("❌ ERROR loading master.html data. Details:", err);
-        document.body.insertAdjacentHTML("beforeend", "<p style='color:red;'⚠️ Failed to load GeoJSON or UID map. Open browser dev console for more info.</p>");
-      }
-    });
-  </script>
 </head>
 <body>
-  <h2>📊 Parcel Master Spreadsheet</h2>
-  <p>This dashboard shows all parcels, notes, status, and allows full table interaction.</p>
+<h2>📋 Master Parcel Dashboard</h2>
+<input type="text" id="searchBox" placeholder="Search by any field..." />
+<div id="tableContainer">Loading...</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
+import { getDatabase, ref, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+import { firebaseConfig } from './firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const statusOrder = {
+  "Conversion": 1,
+  "Follow Up": 2,
+  "Not Interested": 3,
+  "New": 4,
+  "On Hold": 5
+};
+
+const statusColors = {
+  "New": "row-color-New",
+  "Follow Up": "row-color-FollowUp",
+  "Follow Up 1": "row-color-FollowUp",
+  "Follow Up 2": "row-color-FollowUp",
+  "Follow Up 3": "row-color-FollowUp",
+  "On Hold": "row-color-OnHold",
+  "Conversion": "row-color-Conversion",
+  "Not Interested": "row-color-NotInterested"
+};
+
+const geojsonFile = "geojson_filename.txt";
+
+const fetchGeoJSON = async () => {
+  const filename = await fetch(geojsonFile).then(res => res.text());
+  return fetch(filename.trim()).then(res => res.json());
+};
+
+const sortByStatus = (a, b) => {
+  const s1 = a.Status || "New";
+  const s2 = b.Status || "New";
+  return (statusOrder[s1] || 99) - (statusOrder[s2] || 99);
+};
+
+const renderTable = (features, fbData) => {
+  const container = document.getElementById("tableContainer");
+  const keys = new Set();
+  features.forEach(f => Object.keys(f.properties).forEach(k => keys.add(k)));
+
+  const columns = Array.from(keys).filter(k => k !== "searchable" && k !== "Status");
+  columns.unshift("uid");
+  columns.push("Status", "New Note", "Save");
+
+  features.forEach(f => {
+    const uid = f.properties.uid;
+    const fb = fbData[uid] || {};
+    f.properties.Status = fb.status || f.properties.Status || "New";
+    f.properties.notes = fb.notes || [];
+  });
+
+  features.sort((a, b) => sortByStatus(a.properties, b.properties));
+
+  let html = `<table><thead><tr>${columns.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
+
+  for (const feature of features) {
+    const props = feature.properties;
+    const uid = props.uid;
+    const rowClass = statusColors[props.Status] || "";
+
+    html += `<tr class="${rowClass}" data-uid="${uid}">`;
+    columns.forEach(col => {
+      if (col === "Status") {
+        html += `<td>
+          <select class="status" data-uid="${uid}">
+            <option>New</option>
+            <option>Follow Up 1</option>
+            <option>Follow Up 2</option>
+            <option>Follow Up 3</option>
+            <option>On Hold</option>
+            <option>Conversion</option>
+            <option>Not Interested</option>
+          </select>
+        </td>`;
+      } else if (col === "New Note") {
+        html += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea></td>`;
+      } else if (col === "Save") {
+        html += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
+      } else {
+        html += `<td>${props[col] || ""}</td>`;
+      }
+    });
+    html += `</tr>`;
+  }
+
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+
+  // Preselect statuses
+  document.querySelectorAll("select.status").forEach(sel => {
+    const uid = sel.dataset.uid;
+    const row = document.querySelector(`tr[data-uid='${uid}']`);
+    const statusCell = row.querySelector("td:nth-last-child(3)");
+    const current = statusCell && statusCell.querySelector("select").value;
+    sel.value = current;
+  });
+
+  document.querySelectorAll(".save").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const uid = btn.dataset.uid;
+      const noteEl = document.querySelector(`textarea.note[data-uid='${uid}']`);
+      const statusEl = document.querySelector(`select.status[data-uid='${uid}']`);
+      const newNote = noteEl.value.trim();
+      const newStatus = statusEl.value;
+
+      if (!newNote && !newStatus) return;
+
+      get(child(ref(db), `${uid}/notes`)).then(snapshot => {
+        const notes = snapshot.val() || [];
+        if (newNote) {
+          notes.push({ text: newNote, user: "Ben", timestamp: new Date().toISOString() });
+        }
+        update(ref(db, uid), { status: newStatus, notes }).then(() => {
+          alert("Saved!");
+          location.reload();
+        });
+      });
+    });
+  });
+};
+
+const searchFilter = () => {
+  const term = document.getElementById("searchBox").value.toLowerCase();
+  document.querySelectorAll("tbody tr").forEach(row => {
+    row.style.display = Array.from(row.cells).some(td => td.innerText.toLowerCase().includes(term)) ? "" : "none";
+  });
+};
+
+document.getElementById("searchBox").addEventListener("input", searchFilter);
+
+Promise.all([fetchGeoJSON(), get(ref(db))])
+  .then(([geojson, snapshot]) => renderTable(geojson.features, snapshot.val() || {}));
+</script>
 </body>
 </html>
