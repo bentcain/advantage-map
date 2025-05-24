@@ -1,4 +1,4 @@
-<!-- version: index.html - full Firebase sync patch - 2025-05-24 -->
+<!-- version: index.html - popup live Firebase requery - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -109,50 +109,50 @@
             const center = layer.getBounds().getCenter();
             const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
 
-            let popupContent = "<table>";
-            for (const key in props) {
-              if (key !== "searchable" && key !== "Status") {
-                popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-              }
-            }
-
-            const notesLink = `notes.html?uid=${uid}`;
-            const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
-
-            get(child(ref(db), uid)).then(snapshot => {
-              const fb = snapshot.val() || {};
-              const currentStatus = fb.status || props.Status || "New";
-              const notes = fb.notes || [];
-
-              feature.properties.Status = currentStatus;
-              layer.setStyle({ fillColor: getStatusColor(currentStatus) });
-
-              popupContent += `<tr><td><strong>Status</strong></td><td>
-                <select id="status-${uid}">
-                  ${statusOptions.map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
-                </select>
-              </td></tr>`;
-
-              popupContent += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3" cols="25"></textarea></td></tr>`;
-              popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
-
-              if (notes.length > 0) {
-                const last = notes[notes.length - 1];
-                popupContent += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text} <br><small>${last.user || ""} - ${last.timestamp || ""}</small></td></tr>`;
-              }
-
-              popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
-              popupContent += `<tr><td colspan="2"><a href="${streetViewLink}" target="_blank">Street View</a></td></tr>`;
-              popupContent += `</table>`;
-
-              layer.bindPopup(popupContent);
-            });
+            let notesLink = `notes.html?uid=${uid}`;
+            let streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
 
             layer.on("popupopen", () => {
-              setTimeout(() => {
-                const el = document.getElementById(`status-${uid}`);
-                if (el) el.focus();
-              }, 100);
+              get(child(ref(db), uid)).then(snapshot => {
+                const fb = snapshot.val() || {};
+                const currentStatus = fb.status || props.Status || "New";
+                const notes = fb.notes || [];
+
+                props.Status = currentStatus;
+                layer.setStyle({ fillColor: getStatusColor(currentStatus) });
+
+                let popupContent = "<table>";
+                for (const key in props) {
+                  if (key !== "searchable" && key !== "Status") {
+                    popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+                  }
+                }
+
+                popupContent += `<tr><td><strong>Status</strong></td><td>
+                  <select id="status-${uid}">
+                    ${statusOptions.map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
+                  </select>
+                </td></tr>`;
+
+                popupContent += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3" cols="25"></textarea></td></tr>`;
+                popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
+
+                if (notes.length > 0) {
+                  const last = notes[notes.length - 1];
+                  popupContent += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text} <br><small>${last.user || ""} - ${last.timestamp || ""}</small></td></tr>`;
+                }
+
+                popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
+                popupContent += `<tr><td colspan="2"><a href="${streetViewLink}" target="_blank">Street View</a></td></tr>`;
+                popupContent += `</table>`;
+
+                layer.setPopupContent(popupContent);
+
+                setTimeout(() => {
+                  const el = document.getElementById(`status-${uid}`);
+                  if (el) el.focus();
+                }, 100);
+              });
             });
           }
         }).addTo(map);
