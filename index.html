@@ -1,4 +1,4 @@
-<!-- version: index.html - cleaned popup status, no duplicate - 2025-05-23 -->
+<!-- version: index.html - visual revert patch applied - 2025-05-23 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -115,6 +115,10 @@
               const notes = fb.notes || [];
 
               console.log(`📂 Firebase Path: ${uid}, Loaded Status: ${currentStatus}`);
+
+              // 🔁 Overwrite properties + style to prevent visual revert
+              feature.properties.Status = currentStatus;
+              layer.setStyle({ fillColor: getStatusColor(currentStatus) });
 
               popupContent += `<tr><td><strong>Status</strong></td><td>
                 <select id="status-${uid}">
