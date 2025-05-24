@@ -1,4 +1,4 @@
-<!-- version: index.html diagnostic-enhanced full-featured Advantage build 2025-05-23 -->
+<!-- version: index.html - cleaned popup status, no duplicate - 2025-05-23 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,8 +45,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
-
-  <!-- Full original working logic preserved below -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
     import { getDatabase, ref, push, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
@@ -102,7 +100,7 @@
 
             let popupContent = "<table>";
             for (const key in props) {
-              if (key !== "searchable") {
+              if (key !== "searchable" && key !== "Status") {
                 popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
               }
             }
