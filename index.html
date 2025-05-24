@@ -1,4 +1,4 @@
-<!-- version: index.html - popup fixed + dynamic Firebase sync - 2025-05-24 -->
+<!-- version: index.html - legend shift + guaranteed popup fields - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,7 +14,7 @@
     .leaflet-popup-content { max-height: 300px; overflow-y: auto; font-size: 14px; }
     .legend {
       position: absolute;
-      bottom: 60px;
+      bottom: 15px;
       left: 15px;
       background: white;
       padding: 8px;
@@ -25,7 +25,7 @@
     }
     #notes-link, #master-link {
       position: absolute;
-      left: 15px;
+      left: 180px;
       background: white;
       padding: 6px 12px;
       border-radius: 8px;
@@ -84,18 +84,7 @@
       .then(res => res.text())
       .then(file => fetch(file.trim()))
       .then(res => res.json())
-      .then(async data => {
-        const snapshot = await get(ref(db));
-        const fbData = snapshot.val() || {};
-
-        for (let feature of data.features) {
-          const uid = feature.properties.uid;
-          const fbStatus = fbData[uid]?.status;
-          if (fbStatus) {
-            feature.properties.Status = fbStatus;
-          }
-        }
-
+      .then(data => {
         const geoLayer = L.geoJSON(data, {
           style: feature => ({
             color: "#444",
@@ -109,53 +98,55 @@
             const center = layer.getBounds().getCenter();
             const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
 
-            let notesLink = `notes.html?uid=${uid}`;
-            let streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
+            let popupContent = "<table>";
 
-            // Bind an empty popup so Leaflet opens it on click
-            layer.bindPopup("Loading...");
+            // Always show Parent and Acreage at the top if present
+            if (props.Parent) popupContent += `<tr><td><strong>Parent</strong></td><td>${props.Parent}</td></tr>`;
+            if (props.Acreage) popupContent += `<tr><td><strong>Acreage</strong></td><td>${props.Acreage}</td></tr>`;
+
+            for (const key in props) {
+              if (key !== "searchable" && key !== "Status" && key !== "Parent" && key !== "Acreage") {
+                popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
+              }
+            }
+
+            const notesLink = `notes.html?uid=${uid}`;
+            const streetViewLink = `https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}`;
+
+            get(child(ref(db), uid)).then(snapshot => {
+              const fb = snapshot.val() || {};
+              const currentStatus = fb.status || props.Status || "New";
+              const notes = fb.notes || [];
+
+              props.Status = currentStatus;
+              layer.setStyle({ fillColor: getStatusColor(currentStatus) });
+
+              popupContent += `<tr><td><strong>Status</strong></td><td>
+                <select id="status-${uid}">
+                  ${statusOptions.map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
+                </select>
+              </td></tr>`;
+
+              popupContent += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3" cols="25"></textarea></td></tr>`;
+              popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
+
+              if (notes.length > 0) {
+                const last = notes[notes.length - 1];
+                popupContent += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text} <br><small>${last.user || ""} - ${last.timestamp || ""}</small></td></tr>`;
+              }
+
+              popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
+              popupContent += `<tr><td colspan="2"><a href="${streetViewLink}" target="_blank">Street View</a></td></tr>`;
+              popupContent += `</table>`;
+
+              layer.bindPopup(popupContent);
+            });
 
             layer.on("popupopen", () => {
-              get(child(ref(db), uid)).then(snapshot => {
-                const fb = snapshot.val() || {};
-                const currentStatus = fb.status || props.Status || "New";
-                const notes = fb.notes || [];
-
-                props.Status = currentStatus;
-                layer.setStyle({ fillColor: getStatusColor(currentStatus) });
-
-                let popupContent = "<table>";
-                for (const key in props) {
-                  if (key !== "searchable" && key !== "Status") {
-                    popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
-                  }
-                }
-
-                popupContent += `<tr><td><strong>Status</strong></td><td>
-                  <select id="status-${uid}">
-                    ${statusOptions.map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`).join("")}
-                  </select>
-                </td></tr>`;
-
-                popupContent += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3" cols="25"></textarea></td></tr>`;
-                popupContent += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
-
-                if (notes.length > 0) {
-                  const last = notes[notes.length - 1];
-                  popupContent += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text} <br><small>${last.user || ""} - ${last.timestamp || ""}</small></td></tr>`;
-                }
-
-                popupContent += `<tr><td colspan="2"><a href="${notesLink}" target="_blank">📋 View Parcel Notes</a></td></tr>`;
-                popupContent += `<tr><td colspan="2"><a href="${streetViewLink}" target="_blank">Street View</a></td></tr>`;
-                popupContent += `</table>`;
-
-                layer.setPopupContent(popupContent);
-
-                setTimeout(() => {
-                  const el = document.getElementById(`status-${uid}`);
-                  if (el) el.focus();
-                }, 100);
-              });
+              setTimeout(() => {
+                const el = document.getElementById(`status-${uid}`);
+                if (el) el.focus();
+              }, 100);
             });
           }
         }).addTo(map);
