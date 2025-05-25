@@ -1,14 +1,12 @@
-<!-- version: index.html - legend shift + guaranteed popup fields - 2025-05-24 -->
+<!-- version: index.html - parcel label toggle enabled - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Interactive Parcel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.css" />
-
   <style>
     html, body, #map { height: 100%; margin: 0; }
     .leaflet-popup-content { max-height: 300px; overflow-y: auto; font-size: 14px; }
@@ -35,11 +33,26 @@
     }
     #master-link { bottom: 50px; }
     #notes-link { bottom: 15px; }
+    #labelToggleContainer {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      background: white;
+      padding: 6px 10px;
+      z-index: 1001;
+      font-family: sans-serif;
+      border-radius: 8px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div class="legend" id="status-legend"></div>
+  <div id="labelToggleContainer">
+    <input type="checkbox" id="labelToggle" checked>
+    <label for="labelToggle">Show Labels</label>
+  </div>
   <a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
   <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
 
@@ -57,6 +70,16 @@
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri', maxZoom: 19
     }).addTo(map);
+
+    const labelLayerGroup = L.layerGroup().addTo(map);
+
+    document.getElementById("labelToggle").addEventListener("change", e => {
+      if (e.target.checked) {
+        labelLayerGroup.addTo(map);
+      } else {
+        map.removeLayer(labelLayerGroup);
+      }
+    });
 
     const statusColors = {
       "New": "#1f77b4",
@@ -96,16 +119,20 @@
             const props = feature.properties || {};
             const uid = props.uid;
             const center = layer.getBounds().getCenter();
+
+            // Parcel label creation
+            if (props.Parent && props.Acreage) {
+              const labelText = `${props.Parent} — ${props.Acreage} acres`;
+              const label = L.tooltip({ permanent: true, direction: "center", className: "parcel-label" })
+                .setContent(labelText).setLatLng(center);
+              labelLayerGroup.addLayer(label);
+            }
+
             const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
 
             let popupContent = "<table>";
-
-            // Always show Parent and Acreage at the top if present
-            if (props.Parent) popupContent += `<tr><td><strong>Parent</strong></td><td>${props.Parent}</td></tr>`;
-            if (props.Acreage) popupContent += `<tr><td><strong>Acreage</strong></td><td>${props.Acreage}</td></tr>`;
-
             for (const key in props) {
-              if (key !== "searchable" && key !== "Status" && key !== "Parent" && key !== "Acreage") {
+              if (!["searchable", "Status"].includes(key)) {
                 popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
               }
             }
@@ -186,11 +213,7 @@
           get(child(ref(db), `${uid}/notes`)).then(snapshot => {
             const notes = snapshot.val() || [];
             if (note) {
-              notes.push({
-                text: note,
-                user: "Ben",
-                timestamp: new Date().toISOString()
-              });
+              notes.push({ text: note, user: "Ben", timestamp: new Date().toISOString() });
             }
             update(ref(db, uid), { status, notes }).then(() => {
               updateParcelStyleByUID(uid, status);
