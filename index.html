@@ -1,4 +1,3 @@
-<!-- version: index.html - parcel label toggle enabled - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,6 +43,14 @@
       border-radius: 8px;
       box-shadow: 0 0 4px rgba(0,0,0,0.3);
     }
+    .parcel-label {
+      font-size: 11px;
+      line-height: 1.2;
+      word-wrap: break-word;
+      max-width: 100px;
+      white-space: normal;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -65,14 +72,9 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
     const map = L.map('map').setView([39.8, -89.6], 7);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri', maxZoom: 19
-    }).addTo(map);
 
     const labelLayerGroup = L.layerGroup().addTo(map);
-
     document.getElementById("labelToggle").addEventListener("change", e => {
       if (e.target.checked) {
         labelLayerGroup.addTo(map);
@@ -80,6 +82,10 @@
         map.removeLayer(labelLayerGroup);
       }
     });
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri', maxZoom: 19
+    }).addTo(map);
 
     const statusColors = {
       "New": "#1f77b4",
@@ -120,11 +126,11 @@
             const uid = props.uid;
             const center = layer.getBounds().getCenter();
 
-            // Parcel label creation
             if (props.Parent && props.Acreage) {
               const labelText = `${props.Parent} — ${props.Acreage} acres`;
               const label = L.tooltip({ permanent: true, direction: "center", className: "parcel-label" })
-                .setContent(labelText).setLatLng(center);
+                .setContent(labelText)
+                .setLatLng(center);
               labelLayerGroup.addLayer(label);
             }
 
@@ -132,7 +138,7 @@
 
             let popupContent = "<table>";
             for (const key in props) {
-              if (!["searchable", "Status"].includes(key)) {
+              if (key !== "searchable" && key !== "Status") {
                 popupContent += `<tr><td><strong>${key}</strong></td><td>${props[key]}</td></tr>`;
               }
             }
@@ -207,13 +213,16 @@
         window.saveNote = uid => {
           const note = document.getElementById(`note-${uid}`).value.trim();
           const status = document.getElementById(`status-${uid}`).value;
-
           if (!note && !status) return;
 
           get(child(ref(db), `${uid}/notes`)).then(snapshot => {
             const notes = snapshot.val() || [];
             if (note) {
-              notes.push({ text: note, user: "Ben", timestamp: new Date().toISOString() });
+              notes.push({
+                text: note,
+                user: "Ben",
+                timestamp: new Date().toISOString()
+              });
             }
             update(ref(db, uid), { status, notes }).then(() => {
               updateParcelStyleByUID(uid, status);
