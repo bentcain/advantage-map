@@ -20,7 +20,7 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
-    #notes-link, #master-link {
+    #master-link, #notes-link, #requests-link {
       position: absolute;
       left: 180px;
       background: white;
@@ -30,17 +30,30 @@
       z-index: 1000;
       box-shadow: 0 0 5px rgba(0,0,0,0.2);
     }
-    #master-link { bottom: 50px; }
-    #notes-link { bottom: 15px; }
+    #master-link { bottom: 80px; }
+    #notes-link { bottom: 45px; }
+    #requests-link { bottom: 10px; }
     #labelToggleContainer {
       position: absolute;
       top: 15px;
-      left: 15px;
+      left: 60px;
       background: white;
       padding: 6px 10px;
       z-index: 1001;
       font-family: sans-serif;
       border-radius: 8px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
+    #acreageDisplay {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      font-size: 14px;
+      z-index: 1000;
       box-shadow: 0 0 4px rgba(0,0,0,0.3);
     }
     .parcel-label {
@@ -57,35 +70,49 @@
   <div id="map"></div>
   <div class="legend" id="status-legend"></div>
   <div id="labelToggleContainer">
-    <input type="checkbox" id="labelToggle" checked>
+    <input type="checkbox" id="labelToggle">
     <label for="labelToggle">Show Labels</label>
   </div>
+  <div id="acreageDisplay">Total Acres: 0</div>
   <a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
   <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
+  <a id="requests-link" href="requests.html" target="_blank">📮 View Request Dashboard</a>
 
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-    import { getDatabase, ref, push, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+    import { getDatabase, ref, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
     import { firebaseConfig } from './firebase-config.js';
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const map = L.map('map').setView([39.8, -89.6], 7);
 
+    const map = L.map('map').setView([39.8, -89.6], 7);
     const labelLayerGroup = L.layerGroup().addTo(map);
-    document.getElementById("labelToggle").addEventListener("change", e => {
-      if (e.target.checked) {
-        labelLayerGroup.addTo(map);
-      } else {
-        map.removeLayer(labelLayerGroup);
-      }
+    const selectedParcels = new Set();
+    let totalAcres = 0;
+
+    const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri', maxZoom: 19
     });
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri', maxZoom: 19
-    }).addTo(map);
+    const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    });
+
+    imagery.addTo(map);
+
+    const baseLayers = {
+      "Satellite": imagery,
+      "Street Map": streetMap
+    };
+    L.control.layers(baseLayers).addTo(map);
+
+    document.getElementById("labelToggle").addEventListener("change", e => {
+      if (e.target.checked) labelLayerGroup.addTo(map);
+      else map.removeLayer(labelLayerGroup);
+    });
 
     const statusColors = {
       "New": "#1f77b4",
@@ -109,6 +136,10 @@
       }
     };
 
+    const updateAcreageDisplay = () => {
+      document.getElementById("acreageDisplay").textContent = `Total Acres: ${totalAcres.toLocaleString()}`;
+    };
+
     fetch("geojson_filename.txt")
       .then(res => res.text())
       .then(file => fetch(file.trim()))
@@ -125,17 +156,30 @@
             const props = feature.properties || {};
             const uid = props.uid;
             const center = layer.getBounds().getCenter();
+            const acres = parseFloat(props.Acreage || props['Area (acre)'] || 0);
 
-            if (props.Parent && props.Acreage) {
-              const labelText = `${props.Parent} — ${props.Acreage} acres`;
+            if (props.Parent && acres) {
+              const labelText = `${props.Parent} — ${acres} acres`;
               const label = L.tooltip({ permanent: true, direction: "center", className: "parcel-label" })
                 .setContent(labelText)
                 .setLatLng(center);
               labelLayerGroup.addLayer(label);
             }
 
-            const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
+            layer.on("click", () => {
+              if (selectedParcels.has(uid)) {
+                selectedParcels.delete(uid);
+                totalAcres -= acres;
+                layer.setStyle({ weight: 1 });
+              } else {
+                selectedParcels.add(uid);
+                totalAcres += acres;
+                layer.setStyle({ weight: 3, color: "red" });
+              }
+              updateAcreageDisplay();
+            });
 
+            const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
             let popupContent = "<table>";
             for (const key in props) {
               if (key !== "searchable" && key !== "Status") {
@@ -173,13 +217,6 @@
               popupContent += `</table>`;
 
               layer.bindPopup(popupContent);
-            });
-
-            layer.on("popupopen", () => {
-              setTimeout(() => {
-                const el = document.getElementById(`status-${uid}`);
-                if (el) el.focus();
-              }, 100);
             });
           }
         }).addTo(map);
@@ -233,9 +270,8 @@
 
         window.updateParcelStyleByUID = (uid, newStatus) => {
           map.eachLayer(layer => {
-            if (layer.feature && layer.feature.properties && layer.feature.properties.uid === uid) {
-              const newColor = getStatusColor(newStatus);
-              layer.setStyle({ fillColor: newColor });
+            if (layer.feature?.properties?.uid === uid) {
+              layer.setStyle({ fillColor: getStatusColor(newStatus) });
               layer.feature.properties.Status = newStatus;
             }
           });
