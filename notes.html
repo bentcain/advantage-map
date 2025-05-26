@@ -13,7 +13,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      margin-top: 10px;
     }
     th, td {
       border: 1px solid #ccc;
@@ -23,15 +23,25 @@
     textarea, input[type="text"], select {
       width: 98%;
     }
+    select.filter {
+      width: 100%;
+      margin-bottom: 4px;
+    }
     .requestDetails {
       margin-top: 4px;
     }
+    .New { background-color: #ffffff; }
+    .Follow_Up { background-color: #ffe699; }
+    .On_Hold { background-color: #d9d9d9; }
+    .Conversion { background-color: #c6efce; }
+    .Not_Interested { background-color: #f4cccc; }
   </style>
 </head>
 <body>
   <h2>Parcel Notes Dashboard</h2>
   <table id="notesTable">
     <thead>
+      <tr id="filterRow"></tr>
       <tr>
         <th>UID</th>
         <th>Status</th>
@@ -57,13 +67,56 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     const uidParam = new URLSearchParams(window.location.search).get("uid");
     const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
     const currentUser = localStorage.getItem("username") || "Ben";
 
-    function renderRow(uid, data) {
+    let allData = [];
+
+    function createFilterRow() {
+      const filterRow = document.getElementById("filterRow");
+      filterRow.innerHTML = "";
+      const keys = ["uid", "status", "", "", "text"];
+      keys.forEach((key, i) => {
+        const th = document.createElement("th");
+        if (key) {
+          const values = [...new Set(allData.map(row => row[key] || ""))].sort();
+          const select = document.createElement("select");
+          select.className = "filter";
+          select.dataset.index = i;
+          select.innerHTML = `<option value="">All</option>` + values.map(v => `<option>${v}</option>`).join("");
+          select.onchange = filterTable;
+          th.appendChild(select);
+        }
+        filterRow.appendChild(th);
+      });
+    }
+
+    function filterTable() {
+      const filters = Array.from(document.querySelectorAll("select.filter")).map(s => s.value);
+      const rows = document.querySelectorAll("#notesTable tbody tr");
+      rows.forEach(row => {
+        let show = true;
+        filters.forEach((val, i) => {
+          if (val && !row.children[i].innerText.includes(val)) {
+            show = false;
+          }
+        });
+        row.style.display = show ? "" : "none";
+      });
+    }
+
+    function renderRow(uid, data, noteHistory) {
       const row = document.createElement("tr");
+      const safeStatus = (data.status || "").replace(/ /g, "_");
+      if (safeStatus) row.classList.add(safeStatus);
+
+      // Track for filter dropdowns
+      allData.push({
+        uid,
+        status: data.status || "",
+        text: noteHistory.map(n => n.text).join(" || ")
+      });
 
       const uidCell = document.createElement("td");
       uidCell.textContent = uid;
@@ -121,8 +174,6 @@
         const isRequest = requestCheckbox.checked;
         const assignTo = assignInput.value.trim();
 
-        const updates = { status: statusVal };
-
         if (noteVal) {
           const newNote = {
             text: noteVal,
@@ -166,46 +217,38 @@
       row.appendChild(saveCell);
 
       const historyCell = document.createElement("td");
+      historyCell.innerHTML = noteHistory.map(note =>
+        `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
+      ).join("") || "<em>No notes</em>";
+      row.appendChild(historyCell);
 
-      // Load both standard notes and request comments
-      Promise.all([
-        db.ref(uid).child("notes").once("value"),
-        db.ref("requests").child(uid).once("value")
-      ]).then(([noteSnap, requestSnap]) => {
-        const noteArray = Array.isArray(noteSnap.val()) ? noteSnap.val() : Object.values(noteSnap.val() || {});
-        const requestData = requestSnap.val() || {};
-        let requestComments = [];
-        Object.values(requestData).forEach(req => {
-          const comments = req.comments || [];
-          comments.forEach(comment => {
-            requestComments.push({
-              text: "🔁 Reply to request: " + comment.text,
-              user: comment.user,
-              timestamp: comment.timestamp
-            });
-          });
-        });
-
-        const all = [...noteArray, ...requestComments];
-        all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        if (all.length === 0) {
-          historyCell.innerHTML = "<em>No notes</em>";
-        } else {
-          historyCell.innerHTML = all.map(note =>
-            `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
-          ).join("");
-        }
-
-        row.appendChild(historyCell);
-        document.querySelector("#notesTable tbody").appendChild(row);
-      });
+      document.querySelector("#notesTable tbody").appendChild(row);
     }
 
     db.ref().once("value").then(snapshot => {
       const all = snapshot.val() || {};
-      const filtered = uidParam ? { [uidParam]: all[uidParam] } : all;
-      Object.entries(filtered).forEach(([uid, data]) => renderRow(uid, data));
+      const targetUIDs = uidParam ? [uidParam] : Object.keys(all);
+      Promise.all(targetUIDs.map(uid => {
+        return Promise.all([
+          db.ref(uid).child("notes").once("value"),
+          db.ref("requests").child(uid).once("value")
+        ]).then(([noteSnap, requestSnap]) => {
+          const notes = Array.isArray(noteSnap.val()) ? noteSnap.val() : Object.values(noteSnap.val() || {});
+          const requestData = requestSnap.val() || {};
+          const requestReplies = [];
+          Object.values(requestData).forEach(req => {
+            (req.comments || []).forEach(c => {
+              requestReplies.push({
+                text: "🔁 Reply to request: " + c.text,
+                user: c.user,
+                timestamp: c.timestamp
+              });
+            });
+          });
+          const allNotes = [...notes, ...requestReplies].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          renderRow(uid, all[uid], allNotes);
+        });
+      })).then(() => createFilterRow());
     });
   </script>
 </body>

@@ -13,7 +13,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      margin-top: 10px;
     }
     th, td {
       border: 1px solid #ccc;
@@ -24,33 +24,23 @@
       width: 95%;
       margin-top: 5px;
     }
-    select {
-      margin-bottom: 10px;
+    select.filter {
+      width: 100%;
+      margin-bottom: 4px;
     }
     .New { background-color: #ffffff; }
-    .Follow\ Up { background-color: #ffe699; }
-    .On\ Hold { background-color: #d9d9d9; }
+    .Follow_Up { background-color: #ffe699; }
+    .On_Hold { background-color: #d9d9d9; }
     .Conversion { background-color: #c6efce; }
-    .Not\ Interested { background-color: #f4cccc; }
+    .Not_Interested { background-color: #f4cccc; }
     .closed { opacity: 0.6; }
   </style>
 </head>
 <body>
   <h2>Request Dashboard</h2>
-
-  <label>Filter by Assigned To:
-    <select id="assignedFilter">
-      <option value="">All</option>
-    </select>
-  </label>
-  <label>Filter by Lead Status:
-    <select id="leadFilter">
-      <option value="">All</option>
-    </select>
-  </label>
-
   <table id="requestTable">
     <thead>
+      <tr id="filterRow"></tr>
       <tr>
         <th>Parcel UID</th>
         <th>Request</th>
@@ -82,31 +72,51 @@
     const db = firebase.database();
     const currentUser = localStorage.getItem("username") || "Ben";
 
-    const assignedFilter = document.getElementById("assignedFilter");
-    const leadFilter = document.getElementById("leadFilter");
-    const tableBody = document.getElementById("requestTable").querySelector("tbody");
-
+    const columns = ["uid", "text", "assignedTo", "createdBy", "status", "leadStatus", "created", "", ""]; // for filtering
     let allRequests = [];
 
-    function applyFilters() {
-      tableBody.innerHTML = "";
-      const assignedVal = assignedFilter.value;
-      const leadVal = leadFilter.value;
+    function createFilterRow(data) {
+      const filterRow = document.getElementById("filterRow");
+      filterRow.innerHTML = "";
 
-      let filtered = allRequests;
-      if (assignedVal) filtered = filtered.filter(r => r.request.assignedTo === assignedVal);
-      if (leadVal) filtered = filtered.filter(r => r.leadStatus === leadVal);
+      columns.forEach((col, index) => {
+        const th = document.createElement("th");
+        if (col && col !== "created") {
+          const select = document.createElement("select");
+          select.className = "filter";
+          select.dataset.column = index;
+          const uniqueValues = Array.from(new Set(data.map(row => row[col] || ""))).sort();
+          select.innerHTML = `<option value="">All</option>` + uniqueValues.map(v => `<option>${v}</option>`).join("");
+          select.onchange = filterTable;
+          th.appendChild(select);
+        }
+        filterRow.appendChild(th);
+      });
+    }
 
-      filtered.forEach(renderRow);
+    function filterTable() {
+      const filters = Array.from(document.querySelectorAll("select.filter")).map(s => s.value);
+      const rows = document.querySelectorAll("#requestTable tbody tr");
+
+      rows.forEach(row => {
+        let show = true;
+        filters.forEach((val, i) => {
+          if (val && !row.children[i].innerText.includes(val)) {
+            show = false;
+          }
+        });
+        row.style.display = show ? "" : "none";
+      });
     }
 
     function renderRow({ uid, requestId, request, leadStatus }) {
       const row = document.createElement("tr");
-      row.classList.add(leadStatus?.replace(/ /g, "_") || "");
+      const safeStatus = (leadStatus || "").replace(/ /g, "_");
+      if (safeStatus) row.classList.add(safeStatus);
       if (request.status === "closed") row.classList.add("closed");
 
       row.innerHTML = `
-        <td><a href="notes.html?uid=${uid}" target="_blank">${uid}</a></td>
+        <td>${uid}</td>
         <td>${request.text}</td>
         <td>${request.assignedTo}</td>
         <td>${request.createdBy}</td>
@@ -160,7 +170,7 @@
       actionsCell.innerHTML = `<a href="notes.html?uid=${uid}" target="_blank">View Notes</a>`;
       row.appendChild(actionsCell);
 
-      tableBody.appendChild(row);
+      document.querySelector("#requestTable tbody").appendChild(row);
     }
 
     function loadRequests() {
@@ -172,16 +182,21 @@
         const parcels = geoSnap.val() || {};
 
         const open = [], closed = [];
-        const assignedUsers = new Set();
-        const leadStatuses = new Set();
 
         Object.entries(requests).forEach(([uid, reqs]) => {
           Object.entries(reqs).forEach(([requestId, request]) => {
             const leadStatus = parcels[uid]?.status || "";
-            assignedUsers.add(request.assignedTo);
-            if (leadStatus) leadStatuses.add(leadStatus);
-
-            const entry = { uid, requestId, request, leadStatus };
+            const entry = {
+              uid,
+              requestId,
+              request,
+              leadStatus,
+              text: request.text,
+              assignedTo: request.assignedTo,
+              createdBy: request.createdBy,
+              status: request.status,
+              created: new Date(request.createdAt).toLocaleString()
+            };
             if (request.status === "closed") closed.push(entry);
             else open.push(entry);
           });
@@ -191,25 +206,11 @@
         closed.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
         allRequests = [...open, ...closed];
 
-        assignedUsers.forEach(user => {
-          const opt = document.createElement("option");
-          opt.value = user;
-          opt.textContent = user;
-          assignedFilter.appendChild(opt);
-        });
-
-        leadStatuses.forEach(status => {
-          const opt = document.createElement("option");
-          opt.value = status;
-          opt.textContent = status;
-          leadFilter.appendChild(opt);
-        });
-
-        applyFilters();
+        createFilterRow(allRequests);
+        allRequests.forEach(renderRow);
       });
     }
 
-    assignedFilter.onchange = leadFilter.onchange = applyFilters;
     loadRequests();
   </script>
 </body>
