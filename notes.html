@@ -60,7 +60,7 @@
 
     const uidParam = new URLSearchParams(window.location.search).get("uid");
     const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
-    const currentUser = localStorage.getItem("username") || "Ben";  // Uses localStorage user or fallback
+    const currentUser = localStorage.getItem("username") || "Ben";
 
     function renderRow(uid, data) {
       const row = document.createElement("tr");
@@ -166,18 +166,40 @@
       row.appendChild(saveCell);
 
       const historyCell = document.createElement("td");
-      const rawNotes = data.notes || [];
-      const noteArray = Array.isArray(rawNotes) ? rawNotes : Object.values(rawNotes);
-      if (noteArray.length === 0) {
-        historyCell.innerHTML = "<em>No notes</em>";
-      } else {
-        historyCell.innerHTML = noteArray.map(note =>
-          `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
-        ).join("");
-      }
-      row.appendChild(historyCell);
 
-      document.querySelector("#notesTable tbody").appendChild(row);
+      // Load both standard notes and request comments
+      Promise.all([
+        db.ref(uid).child("notes").once("value"),
+        db.ref("requests").child(uid).once("value")
+      ]).then(([noteSnap, requestSnap]) => {
+        const noteArray = Array.isArray(noteSnap.val()) ? noteSnap.val() : Object.values(noteSnap.val() || {});
+        const requestData = requestSnap.val() || {};
+        let requestComments = [];
+        Object.values(requestData).forEach(req => {
+          const comments = req.comments || [];
+          comments.forEach(comment => {
+            requestComments.push({
+              text: "🔁 Reply to request: " + comment.text,
+              user: comment.user,
+              timestamp: comment.timestamp
+            });
+          });
+        });
+
+        const all = [...noteArray, ...requestComments];
+        all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        if (all.length === 0) {
+          historyCell.innerHTML = "<em>No notes</em>";
+        } else {
+          historyCell.innerHTML = all.map(note =>
+            `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
+          ).join("");
+        }
+
+        row.appendChild(historyCell);
+        document.querySelector("#notesTable tbody").appendChild(row);
+      });
     }
 
     db.ref().once("value").then(snapshot => {

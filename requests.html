@@ -24,20 +24,31 @@
       width: 95%;
       margin-top: 5px;
     }
-    .closed {
-      opacity: 0.6;
+    select {
+      margin-bottom: 10px;
     }
-    .view-link {
-      text-decoration: none;
-      color: blue;
-    }
-    .save-btn, .close-btn {
-      margin-top: 5px;
-    }
+    .New { background-color: #ffffff; }
+    .Follow\ Up { background-color: #ffe699; }
+    .On\ Hold { background-color: #d9d9d9; }
+    .Conversion { background-color: #c6efce; }
+    .Not\ Interested { background-color: #f4cccc; }
+    .closed { opacity: 0.6; }
   </style>
 </head>
 <body>
   <h2>Request Dashboard</h2>
+
+  <label>Filter by Assigned To:
+    <select id="assignedFilter">
+      <option value="">All</option>
+    </select>
+  </label>
+  <label>Filter by Lead Status:
+    <select id="leadFilter">
+      <option value="">All</option>
+    </select>
+  </label>
+
   <table id="requestTable">
     <thead>
       <tr>
@@ -45,7 +56,8 @@
         <th>Request</th>
         <th>Assigned To</th>
         <th>Created By</th>
-        <th>Status</th>
+        <th>Request State</th>
+        <th>Lead Status</th>
         <th>Created</th>
         <th>Comments</th>
         <th>Actions</th>
@@ -70,113 +82,134 @@
     const db = firebase.database();
     const currentUser = localStorage.getItem("username") || "Ben";
 
-    const table = document.getElementById("requestTable").querySelector("tbody");
+    const assignedFilter = document.getElementById("assignedFilter");
+    const leadFilter = document.getElementById("leadFilter");
+    const tableBody = document.getElementById("requestTable").querySelector("tbody");
 
-    function renderRow(uid, requestId, request) {
+    let allRequests = [];
+
+    function applyFilters() {
+      tableBody.innerHTML = "";
+      const assignedVal = assignedFilter.value;
+      const leadVal = leadFilter.value;
+
+      let filtered = allRequests;
+      if (assignedVal) filtered = filtered.filter(r => r.request.assignedTo === assignedVal);
+      if (leadVal) filtered = filtered.filter(r => r.leadStatus === leadVal);
+
+      filtered.forEach(renderRow);
+    }
+
+    function renderRow({ uid, requestId, request, leadStatus }) {
       const row = document.createElement("tr");
+      row.classList.add(leadStatus?.replace(/ /g, "_") || "");
       if (request.status === "closed") row.classList.add("closed");
 
-      const uidCell = document.createElement("td");
-      uidCell.innerHTML = `<a class="view-link" href="notes.html?uid=${uid}" target="_blank">${uid}</a>`;
-      row.appendChild(uidCell);
-
-      const textCell = document.createElement("td");
-      textCell.textContent = request.text;
-      row.appendChild(textCell);
-
-      const assignedCell = document.createElement("td");
-      assignedCell.textContent = request.assignedTo;
-      row.appendChild(assignedCell);
-
-      const createdByCell = document.createElement("td");
-      createdByCell.textContent = request.createdBy;
-      row.appendChild(createdByCell);
-
-      const statusCell = document.createElement("td");
-      statusCell.textContent = request.status;
-      row.appendChild(statusCell);
-
-      const dateCell = document.createElement("td");
-      dateCell.textContent = new Date(request.createdAt).toLocaleString();
-      row.appendChild(dateCell);
+      row.innerHTML = `
+        <td><a href="notes.html?uid=${uid}" target="_blank">${uid}</a></td>
+        <td>${request.text}</td>
+        <td>${request.assignedTo}</td>
+        <td>${request.createdBy}</td>
+        <td>${request.status}</td>
+        <td>${leadStatus || "—"}</td>
+        <td>${new Date(request.createdAt).toLocaleString()}</td>
+      `;
 
       const commentsCell = document.createElement("td");
       const comments = request.comments || [];
       commentsCell.innerHTML = comments.map(c =>
-        `<div><strong>${c.user}</strong>: ${c.text} <br><small>${new Date(c.timestamp).toLocaleString()}</small></div><hr>`
+        `<div><strong>${c.user}</strong>: ${c.text}<br><small>${new Date(c.timestamp).toLocaleString()}</small></div><hr>`
       ).join("");
 
       const replyBox = document.createElement("textarea");
-      const saveBtn = document.createElement("button");
-      saveBtn.textContent = "Reply";
-      saveBtn.className = "save-btn";
-      saveBtn.onclick = () => {
+      const replyBtn = document.createElement("button");
+      replyBtn.textContent = "Reply";
+      replyBtn.onclick = () => {
         const reply = replyBox.value.trim();
         if (!reply) return;
-        const newComment = {
+        const comment = {
           text: reply,
           user: currentUser,
           timestamp: new Date().toISOString()
         };
-        const updatedComments = [...comments, newComment];
-        db.ref(`requests/${uid}/${requestId}`).update({ comments: updatedComments });
-        alert("Reply added.");
-        location.reload();
+        const updatedComments = [...comments, comment];
+        db.ref(`requests/${uid}/${requestId}`).update({ comments: updatedComments }).then(() => {
+          alert("Reply added.");
+          location.reload();
+        });
       };
 
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "Close Request";
-      closeBtn.className = "close-btn";
       closeBtn.onclick = () => {
         db.ref(`requests/${uid}/${requestId}`).update({
           status: "closed",
           closedAt: new Date().toISOString()
+        }).then(() => {
+          alert("Request closed.");
+          location.reload();
         });
-        alert("Request marked as closed.");
-        location.reload();
       };
 
       commentsCell.appendChild(replyBox);
-      commentsCell.appendChild(saveBtn);
-      if (request.status !== "closed") {
-        commentsCell.appendChild(closeBtn);
-      }
-
+      commentsCell.appendChild(replyBtn);
+      if (request.status !== "closed") commentsCell.appendChild(closeBtn);
       row.appendChild(commentsCell);
 
       const actionsCell = document.createElement("td");
       actionsCell.innerHTML = `<a href="notes.html?uid=${uid}" target="_blank">View Notes</a>`;
       row.appendChild(actionsCell);
 
-      table.appendChild(row);
+      tableBody.appendChild(row);
     }
 
     function loadRequests() {
-      db.ref("requests").once("value").then(snapshot => {
-        const allRequests = snapshot.val() || {};
-        const openRequests = [];
-        const closedRequests = [];
+      Promise.all([
+        db.ref("requests").once("value"),
+        db.ref().once("value")
+      ]).then(([requestsSnap, geoSnap]) => {
+        const requests = requestsSnap.val() || {};
+        const parcels = geoSnap.val() || {};
 
-        Object.entries(allRequests).forEach(([uid, requests]) => {
-          Object.entries(requests).forEach(([requestId, request]) => {
-            if (request.status === "closed") {
-              closedRequests.push({ uid, requestId, request });
-            } else {
-              openRequests.push({ uid, requestId, request });
-            }
+        const open = [], closed = [];
+        const assignedUsers = new Set();
+        const leadStatuses = new Set();
+
+        Object.entries(requests).forEach(([uid, reqs]) => {
+          Object.entries(reqs).forEach(([requestId, request]) => {
+            const leadStatus = parcels[uid]?.status || "";
+            assignedUsers.add(request.assignedTo);
+            if (leadStatus) leadStatuses.add(leadStatus);
+
+            const entry = { uid, requestId, request, leadStatus };
+            if (request.status === "closed") closed.push(entry);
+            else open.push(entry);
           });
         });
 
-        // Sort
-        openRequests.sort((a, b) => new Date(a.request.createdAt) - new Date(b.request.createdAt));
-        closedRequests.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
+        open.sort((a, b) => new Date(a.request.createdAt) - new Date(b.request.createdAt));
+        closed.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
+        allRequests = [...open, ...closed];
 
-        [...openRequests, ...closedRequests].forEach(({ uid, requestId, request }) =>
-          renderRow(uid, requestId, request)
-        );
+        assignedUsers.forEach(user => {
+          const opt = document.createElement("option");
+          opt.value = user;
+          opt.textContent = user;
+          assignedFilter.appendChild(opt);
+        });
+
+        leadStatuses.forEach(status => {
+          const opt = document.createElement("option");
+          opt.value = status;
+          opt.textContent = status;
+          leadFilter.appendChild(opt);
+        });
+
+        applyFilters();
       });
     }
 
+    assignedFilter.onchange = leadFilter.onchange = applyFilters;
     loadRequests();
   </script>
 </body>
