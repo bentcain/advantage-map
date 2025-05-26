@@ -46,7 +46,7 @@
     }
     #acreageDisplay {
       position: absolute;
-      top: 15px;
+      top: 60px;
       right: 15px;
       background: white;
       padding: 8px 12px;
@@ -246,6 +246,64 @@
           }
         });
         map.addControl(searchControl);
+
+        // Add Clear + Contiguous buttons
+        const acreageBox = document.getElementById("acreageDisplay");
+
+        const clearBtn = document.createElement("button");
+        clearBtn.textContent = "Clear Selected";
+        clearBtn.style.marginTop = "4px";
+        clearBtn.onclick = () => {
+          totalAcres = 0;
+          selectedParcels.clear();
+          geoLayer.eachLayer(layer => {
+            layer.setStyle({ weight: 1, color: "#444" });
+          });
+          updateAcreageDisplay();
+        };
+        acreageBox.appendChild(document.createElement("br"));
+        acreageBox.appendChild(clearBtn);
+
+        const contiguousBtn = document.createElement("button");
+        contiguousBtn.textContent = "🧩 Contiguous Block";
+        contiguousBtn.style.marginTop = "4px";
+        contiguousBtn.onclick = () => {
+          const selectedUID = Array.from(selectedParcels)[0];
+          if (!selectedUID) return alert("Please select one parcel to use as anchor.");
+
+          const visited = new Set();
+          let contiguousAcres = 0;
+          const group = [];
+
+          const findContiguous = layer => {
+            const props = layer.feature?.properties;
+            const uid = props?.uid;
+            const status = props?.Status;
+            if (!props || visited.has(uid) || status === "Not Interested") return;
+            visited.add(uid);
+            group.push(layer);
+            const acres = parseFloat(props.Acreage || props["Area (acre)"] || 0);
+            contiguousAcres += acres;
+
+            geoLayer.eachLayer(otherLayer => {
+              if (layer === otherLayer) return;
+              if (layer.getBounds().intersects(otherLayer.getBounds())) {
+                findContiguous(otherLayer);
+              }
+            });
+          };
+
+          geoLayer.eachLayer(layer => {
+            if (layer.feature?.properties?.uid === selectedUID) {
+              findContiguous(layer);
+            }
+          });
+
+          group.forEach(l => l.setStyle({ weight: 3, color: "green" }));
+          alert(`Contiguous Block Total: ${contiguousAcres.toLocaleString()} acres`);
+        };
+        acreageBox.appendChild(document.createElement("br"));
+        acreageBox.appendChild(contiguousBtn);
 
         window.saveNote = uid => {
           const note = document.getElementById(`note-${uid}`).value.trim();
