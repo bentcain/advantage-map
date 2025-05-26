@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Parcel Notes Dashboard</title>
+  <title>Request Dashboard</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
@@ -21,28 +21,34 @@
       vertical-align: top;
     }
     textarea {
-      width: 98%;
-    }
-    select, input[type="text"] {
-      width: 100%;
+      width: 95%;
       margin-top: 5px;
     }
-    label {
-      display: block;
+    .closed {
+      opacity: 0.6;
+    }
+    .view-link {
+      text-decoration: none;
+      color: blue;
+    }
+    .save-btn, .close-btn {
       margin-top: 5px;
     }
   </style>
 </head>
 <body>
-  <h2>Parcel Notes Dashboard</h2>
-  <table id="notesTable">
+  <h2>Request Dashboard</h2>
+  <table id="requestTable">
     <thead>
       <tr>
-        <th>UID</th>
+        <th>Parcel UID</th>
+        <th>Request</th>
+        <th>Assigned To</th>
+        <th>Created By</th>
         <th>Status</th>
-        <th>New Note / Request</th>
-        <th>Submit</th>
-        <th>Note History</th>
+        <th>Created</th>
+        <th>Comments</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -60,118 +66,118 @@
       databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
     };
 
-    const app = firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const currentUser = localStorage.getItem("username") || "Ben";
 
-    const uidParam = new URLSearchParams(window.location.search).get("uid");
-    const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
+    const table = document.getElementById("requestTable").querySelector("tbody");
 
-    function renderRow(uid, data) {
+    function renderRow(uid, requestId, request) {
       const row = document.createElement("tr");
+      if (request.status === "closed") row.classList.add("closed");
 
       const uidCell = document.createElement("td");
-      uidCell.textContent = uid;
+      uidCell.innerHTML = `<a class="view-link" href="notes.html?uid=${uid}" target="_blank">${uid}</a>`;
       row.appendChild(uidCell);
 
+      const textCell = document.createElement("td");
+      textCell.textContent = request.text;
+      row.appendChild(textCell);
+
+      const assignedCell = document.createElement("td");
+      assignedCell.textContent = request.assignedTo;
+      row.appendChild(assignedCell);
+
+      const createdByCell = document.createElement("td");
+      createdByCell.textContent = request.createdBy;
+      row.appendChild(createdByCell);
+
       const statusCell = document.createElement("td");
-      const statusSelect = document.createElement("select");
-      statusOptions.forEach(option => {
-        const opt = document.createElement("option");
-        opt.value = option;
-        opt.textContent = option;
-        if (data.status === option) opt.selected = true;
-        statusSelect.appendChild(opt);
-      });
-      statusCell.appendChild(statusSelect);
+      statusCell.textContent = request.status;
       row.appendChild(statusCell);
 
-      const noteCell = document.createElement("td");
-      const noteInput = document.createElement("textarea");
-      const requestToggle = document.createElement("label");
-      const isRequest = document.createElement("input");
-      isRequest.type = "checkbox";
-      requestToggle.appendChild(isRequest);
-      requestToggle.appendChild(document.createTextNode(" This is a request"));
-      const assignToInput = document.createElement("input");
-      assignToInput.type = "text";
-      assignToInput.placeholder = "Assign to (optional)";
-      assignToInput.style.display = "none";
+      const dateCell = document.createElement("td");
+      dateCell.textContent = new Date(request.createdAt).toLocaleString();
+      row.appendChild(dateCell);
 
-      isRequest.addEventListener("change", () => {
-        assignToInput.style.display = isRequest.checked ? "block" : "none";
-      });
+      const commentsCell = document.createElement("td");
+      const comments = request.comments || [];
+      commentsCell.innerHTML = comments.map(c =>
+        `<div><strong>${c.user}</strong>: ${c.text} <br><small>${new Date(c.timestamp).toLocaleString()}</small></div><hr>`
+      ).join("");
 
-      noteCell.appendChild(noteInput);
-      noteCell.appendChild(requestToggle);
-      noteCell.appendChild(assignToInput);
-      row.appendChild(noteCell);
-
-      const saveCell = document.createElement("td");
+      const replyBox = document.createElement("textarea");
       const saveBtn = document.createElement("button");
-      saveBtn.textContent = "Save";
+      saveBtn.textContent = "Reply";
+      saveBtn.className = "save-btn";
       saveBtn.onclick = () => {
-        const username = localStorage.getItem("username") || "Ben";
-        const updates = {
-          status: statusSelect.value
+        const reply = replyBox.value.trim();
+        if (!reply) return;
+        const newComment = {
+          text: reply,
+          user: currentUser,
+          timestamp: new Date().toISOString()
         };
-        if (noteInput.value.trim()) {
-          const newNote = {
-            text: noteInput.value.trim(),
-            user: username,
-            timestamp: new Date().toISOString()
-          };
-          db.ref(uid).child("notes").once("value").then(snapshot => {
-            const existingNotes = snapshot.val() || [];
-            const noteArray = Array.isArray(existingNotes) ? existingNotes : Object.values(existingNotes);
-            noteArray.push(newNote);
-            db.ref(uid).update({
-              status: statusSelect.value,
-              notes: noteArray
-            });
-
-            if (isRequest.checked) {
-              const requestData = {
-                text: noteInput.value.trim(),
-                createdBy: username,
-                assignedTo: assignToInput.value || '',
-                createdAt: new Date().toISOString(),
-                status: 'open'
-              };
-              db.ref(`requests/${uid}`).push(requestData);
-            }
-
-            alert("Note saved!");
-            location.reload();
-          });
-        } else {
-          db.ref(uid).update({ status: statusSelect.value });
-          alert("Status updated.");
-          location.reload();
-        }
+        const updatedComments = [...comments, newComment];
+        db.ref(`requests/${uid}/${requestId}`).update({ comments: updatedComments });
+        alert("Reply added.");
+        location.reload();
       };
-      saveCell.appendChild(saveBtn);
-      row.appendChild(saveCell);
 
-      const historyCell = document.createElement("td");
-      const rawNotes = data.notes || [];
-      const noteArray = Array.isArray(rawNotes) ? rawNotes : Object.values(rawNotes);
-      if (noteArray.length === 0) {
-        historyCell.innerHTML = "<em>No notes</em>";
-      } else {
-        historyCell.innerHTML = noteArray.map(note =>
-          `<div><strong>${note.user || "Unknown"}:</strong> ${note.text} <br><small>${note.timestamp || ""}</small></div><hr>`
-        ).join("");
+      const closeBtn = document.createElement("button");
+      closeBtn.textContent = "Close Request";
+      closeBtn.className = "close-btn";
+      closeBtn.onclick = () => {
+        db.ref(`requests/${uid}/${requestId}`).update({
+          status: "closed",
+          closedAt: new Date().toISOString()
+        });
+        alert("Request marked as closed.");
+        location.reload();
+      };
+
+      commentsCell.appendChild(replyBox);
+      commentsCell.appendChild(saveBtn);
+      if (request.status !== "closed") {
+        commentsCell.appendChild(closeBtn);
       }
-      row.appendChild(historyCell);
 
-      document.querySelector("#notesTable tbody").appendChild(row);
+      row.appendChild(commentsCell);
+
+      const actionsCell = document.createElement("td");
+      actionsCell.innerHTML = `<a href="notes.html?uid=${uid}" target="_blank">View Notes</a>`;
+      row.appendChild(actionsCell);
+
+      table.appendChild(row);
     }
 
-    db.ref().once("value").then(snapshot => {
-      const all = snapshot.val() || {};
-      const filtered = uidParam ? { [uidParam]: all[uidParam] } : all;
-      Object.entries(filtered).forEach(([uid, data]) => renderRow(uid, data));
-    });
+    function loadRequests() {
+      db.ref("requests").once("value").then(snapshot => {
+        const allRequests = snapshot.val() || {};
+        const openRequests = [];
+        const closedRequests = [];
+
+        Object.entries(allRequests).forEach(([uid, requests]) => {
+          Object.entries(requests).forEach(([requestId, request]) => {
+            if (request.status === "closed") {
+              closedRequests.push({ uid, requestId, request });
+            } else {
+              openRequests.push({ uid, requestId, request });
+            }
+          });
+        });
+
+        // Sort
+        openRequests.sort((a, b) => new Date(a.request.createdAt) - new Date(b.request.createdAt));
+        closedRequests.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
+
+        [...openRequests, ...closedRequests].forEach(({ uid, requestId, request }) =>
+          renderRow(uid, requestId, request)
+        );
+      });
+    }
+
+    loadRequests();
   </script>
 </body>
 </html>
