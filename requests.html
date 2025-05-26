@@ -20,11 +20,16 @@
       padding: 6px;
       vertical-align: top;
     }
-    textarea, input[type="text"], select {
+    textarea {
       width: 98%;
     }
-    .requestDetails {
-      margin-top: 4px;
+    select, input[type="text"] {
+      width: 100%;
+      margin-top: 5px;
+    }
+    label {
+      display: block;
+      margin-top: 5px;
     }
   </style>
 </head>
@@ -35,7 +40,7 @@
       <tr>
         <th>UID</th>
         <th>Status</th>
-        <th>New Note</th>
+        <th>New Note / Request</th>
         <th>Submit</th>
         <th>Note History</th>
       </tr>
@@ -55,12 +60,11 @@
       databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
     const uidParam = new URLSearchParams(window.location.search).get("uid");
     const statusOptions = ["New", "Follow Up 1", "Follow Up 2", "Follow Up 3", "On Hold", "Conversion", "Not Interested"];
-    const currentUser = localStorage.getItem("username") || "Ben";  // Uses localStorage user or fallback
 
     function renderRow(uid, data) {
       const row = document.createElement("tr");
@@ -83,81 +87,64 @@
 
       const noteCell = document.createElement("td");
       const noteInput = document.createElement("textarea");
-      noteCell.appendChild(noteInput);
-
       const requestToggle = document.createElement("label");
-      const requestCheckbox = document.createElement("input");
-      requestCheckbox.type = "checkbox";
-      requestToggle.appendChild(requestCheckbox);
-      requestToggle.append(" This is a request");
+      const isRequest = document.createElement("input");
+      isRequest.type = "checkbox";
+      requestToggle.appendChild(isRequest);
+      requestToggle.appendChild(document.createTextNode(" This is a request"));
+      const assignToInput = document.createElement("input");
+      assignToInput.type = "text";
+      assignToInput.placeholder = "Assign to (optional)";
+      assignToInput.style.display = "none";
 
-      const requestDetails = document.createElement("div");
-      requestDetails.className = "requestDetails";
-      requestDetails.style.display = "none";
-      const assignLabel = document.createElement("label");
-      assignLabel.textContent = "Assign To: ";
-      const assignInput = document.createElement("input");
-      assignInput.type = "text";
-      assignInput.placeholder = "e.g. Jeff";
-      assignInput.className = "assignToInput";
-      assignLabel.appendChild(assignInput);
-      requestDetails.appendChild(assignLabel);
+      isRequest.addEventListener("change", () => {
+        assignToInput.style.display = isRequest.checked ? "block" : "none";
+      });
 
-      requestCheckbox.onchange = () => {
-        requestDetails.style.display = requestCheckbox.checked ? "block" : "none";
-      };
-
-      noteCell.appendChild(document.createElement("br"));
+      noteCell.appendChild(noteInput);
       noteCell.appendChild(requestToggle);
-      noteCell.appendChild(requestDetails);
+      noteCell.appendChild(assignToInput);
       row.appendChild(noteCell);
 
       const saveCell = document.createElement("td");
       const saveBtn = document.createElement("button");
       saveBtn.textContent = "Save";
       saveBtn.onclick = () => {
-        const statusVal = statusSelect.value;
-        const noteVal = noteInput.value.trim();
-        const isRequest = requestCheckbox.checked;
-        const assignTo = assignInput.value.trim();
-
-        const updates = { status: statusVal };
-
-        if (noteVal) {
+        const username = localStorage.getItem("username") || "Ben";
+        const updates = {
+          status: statusSelect.value
+        };
+        if (noteInput.value.trim()) {
           const newNote = {
-            text: noteVal,
-            user: currentUser,
+            text: noteInput.value.trim(),
+            user: username,
             timestamp: new Date().toISOString()
           };
-
           db.ref(uid).child("notes").once("value").then(snapshot => {
             const existingNotes = snapshot.val() || [];
             const noteArray = Array.isArray(existingNotes) ? existingNotes : Object.values(existingNotes);
             noteArray.push(newNote);
-
             db.ref(uid).update({
-              status: statusVal,
+              status: statusSelect.value,
               notes: noteArray
             });
 
-            if (isRequest) {
-              const requestId = `${Date.now()}_${currentUser.toLowerCase()}`;
-              const request = {
-                text: noteVal,
-                createdBy: currentUser,
-                assignedTo: assignTo || "Unassigned",
-                status: "open",
+            if (isRequest.checked) {
+              const requestData = {
+                text: noteInput.value.trim(),
+                createdBy: username,
+                assignedTo: assignToInput.value || '',
                 createdAt: new Date().toISOString(),
-                comments: []
+                status: 'open'
               };
-              db.ref("requests").child(uid).child(requestId).set(request);
+              db.ref(`requests/${uid}`).push(requestData);
             }
 
-            alert("Note saved" + (isRequest ? " with request." : "."));
+            alert("Note saved!");
             location.reload();
           });
         } else {
-          db.ref(uid).update({ status: statusVal });
+          db.ref(uid).update({ status: statusSelect.value });
           alert("Status updated.");
           location.reload();
         }
