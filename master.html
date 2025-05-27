@@ -1,222 +1,196 @@
+<!-- version: master.html - Phase 5 - Config + Firebase merge -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Master Parcel Dashboard</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    input[type="text"] {
-      margin-bottom: 10px;
-      padding: 4px;
-      width: 300px;
-    }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    thead th {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 1;
-    }
-    th, td {
-      padding: 6px;
-      border: 1px solid #ccc;
-      text-align: left;
-    }
-    select.filter {
-      width: 100%;
-      margin-bottom: 4px;
-    }
-    .status-dropdown {
-      width: 100%;
-    }
+    body { font-family: sans-serif; margin: 0; padding: 1rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
+    tr:hover { background-color: #f1f1f1; }
+    input[type="text"] { padding: 6px; width: 300px; margin-bottom: 10px; }
+    select, textarea { width: 100%; font-size: 14px; }
   </style>
 </head>
 <body>
-  <h2>Master Parcel Dashboard</h2>
-  <input type="text" id="searchInput" placeholder="Search parcels..." />
-  <table id="parcelTable">
-    <thead>
-      <tr id="filterRow"></tr>
-      <tr id="headerRow"></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<h2>📋 Master Parcel Dashboard</h2>
+<input type="text" id="searchBox" placeholder="Search within filtered rows..." />
+<div id="tableContainer">Loading...</div>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
+import { getDatabase, ref, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+import { firebaseConfig } from './firebase-config.js';
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-    let config = {};
-    let statusColors = {};
-    let statusOrder = {};
-    let parcels = {};
-    let allData = [];
+const geojsonFile = "geojson_filename.txt";
+const configFile = "project_config.json";
+let allRows = [], tableColumns = [], statusOrder = {}, statusColors = {};
 
-    async function loadConfig() {
-      const res = await fetch("project_config.json");
-      config = await res.json();
-      config.statuses.forEach(s => {
-        statusColors[s.name] = s.color;
-        statusOrder[s.name] = s.order;
-      });
+const loadConfig = async () => {
+  const config = await fetch(configFile).then(r => r.json());
+  config.statuses.forEach(s => {
+    statusOrder[s.name.toLowerCase()] = s.order;
+    statusColors[s.name] = s.color;
+  });
+  return config;
+};
+
+const fetchGeoJSON = async () => {
+  const filename = await fetch(geojsonFile).then(res => res.text());
+  return fetch(filename.trim()).then(res => res.json());
+};
+
+function sortTableBody() {
+  const tbody = document.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr")).filter(r => r.style.display !== "none");
+  rows.sort((a, b) => {
+    const sa = a.querySelector("select.status")?.value?.toLowerCase() || "z";
+    const sb = b.querySelector("select.status")?.value?.toLowerCase() || "z";
+    return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
+  });
+  rows.forEach(row => tbody.appendChild(row));
+}
+
+function applyFilters() {
+  const terms = {};
+  document.querySelectorAll(".filter").forEach(sel => {
+    const col = sel.dataset.col;
+    const val = sel.value;
+    if (val) terms[col] = val;
+  });
+
+  document.querySelectorAll("tbody tr").forEach(row => {
+    const cells = row.querySelectorAll("td");
+    let visible = true;
+    for (const key in terms) {
+      const idx = tableColumns.indexOf(key);
+      if (!row.cells[idx] || !row.cells[idx].textContent.includes(terms[key])) visible = false;
     }
+    row.style.display = visible ? "" : "none";
+  });
 
-    async function loadGeojson() {
-      const geojsonFile = await fetch("geojson_filename.txt").then(r => r.text());
-      const geojsonData = await fetch(geojsonFile.trim()).then(r => r.json());
-      geojsonData.features.forEach(f => {
-        const uid = f.properties.uid;
-        if (uid) parcels[uid] = f.properties;
-      });
-    }
+  searchFilter();
+  sortTableBody();
+}
 
-    async function loadData() {
-      const snapshot = await db.ref().once("value");
-      const firebaseData = snapshot.val() || {};
-      const tbody = document.querySelector("#parcelTable tbody");
-      const headerRow = document.getElementById("headerRow");
-      const filterRow = document.getElementById("filterRow");
+let debounceTimer;
+function searchFilter() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const term = document.getElementById("searchBox").value.toLowerCase();
+    document.querySelectorAll("tbody tr").forEach(row => {
+      if (row.style.display === "none") return;
+      row.style.display = Array.from(row.cells).some(td => td.innerText.toLowerCase().includes(term)) ? "" : "none";
+    });
+    sortTableBody();
+  }, 250);
+}
 
-      const fullColumns = config.columns.concat(["Current Status", "Last Note", "Actions"]);
-      fullColumns.forEach((col, i) => {
-        const th = document.createElement("th");
-        th.textContent = col;
-        headerRow.appendChild(th);
+document.getElementById("searchBox").addEventListener("input", searchFilter);
 
-        const fth = document.createElement("th");
-        if (col !== "New Note" && col !== "Actions") {
-          const select = document.createElement("select");
-          select.className = "filter";
-          select.dataset.index = i;
-          select.innerHTML = `<option value="">All</option>`;
-          fth.appendChild(select);
-        }
-        filterRow.appendChild(fth);
-      });
+function renderTable(uids, parcels, fbData, config) {
+  const container = document.getElementById("tableContainer");
+  tableColumns = ["uid", ...config.columns.filter(c => c !== "uid"), "Status", "New Note", "Save"];
 
-      Object.entries(firebaseData).forEach(([uid, data]) => {
-        const row = document.createElement("tr");
-        const parcel = parcels[uid] || {};
-        const status = data.status || "New";
-        const notes = data.notes || [];
-        const lastNote = notes.length > 0 ? notes[notes.length - 1].text : "";
+  const dropdowns = tableColumns.map(col => {
+    if (["New Note", "Save"].includes(col)) return `<th>${col}</th>`;
+    const values = [...new Set(uids.map(uid => parcels[uid]?.[col]).filter(Boolean))].sort();
+    return `<th>
+      <select data-col="${col}" class="filter">
+        <option value="">All ${col}</option>
+        ${values.map(v => `<option>${v}</option>`).join("")}
+      </select>
+    </th>`;
+  }).join("");
 
-        row.dataset.searchable = JSON.stringify({ ...parcel, ...data }).toLowerCase();
-        row.className = status.replace(/ /g, "_");
-        if (statusColors[status]) row.style.backgroundColor = statusColors[status];
+  let html = `<table><thead><tr>${dropdowns}</tr><tr>${tableColumns.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
 
-        config.columns.forEach(col => {
-          const td = document.createElement("td");
-          td.textContent = data[col] ?? parcel[col] ?? "";
-          row.appendChild(td);
-        });
+  const rows = uids.map(uid => {
+    const parcel = parcels[uid] || {};
+    const fb = fbData[uid] || {};
+    const status = fb.status || parcel.Status || "New";
+    const notes = fb.notes || [];
+    const rowClass = statusColors[status] ? `style="background:${statusColors[status]}"` : "";
 
-        const statusTd = document.createElement("td");
-        const select = document.createElement("select");
-        select.className = "status-dropdown";
-        config.statuses.forEach(s => {
-          const opt = document.createElement("option");
-          opt.value = s.name;
-          opt.textContent = s.name;
-          if (s.name === status) opt.selected = true;
-          select.appendChild(opt);
-        });
-        statusTd.appendChild(select);
-        row.appendChild(statusTd);
+    let rowHtml = `<tr ${rowClass} data-uid="${uid}">`;
 
-        const noteTd = document.createElement("td");
-        noteTd.textContent = lastNote;
-        row.appendChild(noteTd);
-
-        const actionTd = document.createElement("td");
-        actionTd.innerHTML = `
-          <a href="notes.html?uid=${uid}" target="_blank">📝 Notes</a> |
-          <a href="index.html?uid=${uid}" target="_blank">🗺️ Map</a>`;
-        row.appendChild(actionTd);
-
-        allData.push({ uid, row, statusOrder: statusOrder[status] || 999 });
-
-        select.onchange = () => {
-          db.ref(uid).update({ status: select.value }).then(() => {
-            row.style.backgroundColor = statusColors[select.value] || "";
-            row.className = select.value.replace(/ /g, "_");
-            alert("Status updated.");
-          });
-        };
-      });
-
-      // Populate filters
-      fullColumns.forEach((col, i) => {
-        const values = new Set();
-        allData.forEach(obj => {
-          const cell = obj.row.children[i];
-          if (cell) values.add(cell.textContent.trim());
-        });
-        const select = filterRow.children[i]?.querySelector("select");
-        if (select) {
-          [...values].sort().forEach(val => {
-            const option = document.createElement("option");
-            option.value = val;
-            option.textContent = val;
-            select.appendChild(option);
-          });
-        }
-      });
-
-      allData.sort((a, b) => a.statusOrder - b.statusOrder);
-      allData.forEach(obj => tbody.appendChild(obj.row));
-    }
-
-    async function init() {
-      await loadConfig();
-      await loadGeojson();
-      await loadData();
-    }
-
-    init();
-
-    // Search with debounce
-    let searchTimeout = null;
-    document.getElementById("searchInput").addEventListener("input", e => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        const val = e.target.value.toLowerCase();
-        document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
-          tr.style.display = tr.dataset.searchable.includes(val) ? "" : "none";
-        });
-      }, 300);
+    tableColumns.forEach(col => {
+      if (col === "Status") {
+        rowHtml += `<td>
+          <select class="status" data-uid="${uid}">
+            ${config.statuses.map(s => `<option value="${s.name}" ${s.name === status ? "selected" : ""}>${s.name}</option>`).join("")}
+          </select>
+        </td>`;
+      } else if (col === "New Note") {
+        rowHtml += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea>
+        <div><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></div>
+        </td>`;
+      } else if (col === "Save") {
+        rowHtml += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
+      } else {
+        rowHtml += `<td>${(parcel[col] ?? fb[col]) || ""}</td>`;
+      }
     });
 
-    // Filter logic
-    document.getElementById("filterRow").addEventListener("change", () => {
-      const filters = [...document.querySelectorAll("select.filter")].map(s => s.value);
-      document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
-        const tds = tr.children;
-        let visible = true;
-        filters.forEach((val, i) => {
-          if (val && !tds[i].textContent.includes(val)) visible = false;
+    rowHtml += `</tr>`;
+    return { html: rowHtml, order: statusOrder[status.toLowerCase()] || 99 };
+  });
+
+  rows.sort((a, b) => a.order - b.order).forEach(r => html += r.html);
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+
+  document.querySelectorAll(".save").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const uid = btn.dataset.uid;
+      const noteEl = document.querySelector(`textarea.note[data-uid='${uid}']`);
+      const statusEl = document.querySelector(`select.status[data-uid='${uid}']`);
+      const newNote = noteEl.value.trim();
+      const newStatus = statusEl.value;
+
+      get(child(ref(db), `${uid}/notes`)).then(snapshot => {
+        const notes = snapshot.val() || [];
+        if (newNote) {
+          notes.push({ text: newNote, user: "Ben", timestamp: new Date().toISOString() });
+        }
+        update(ref(db, uid), { status: newStatus, notes }).then(() => {
+          alert("Saved!");
+          location.reload();
         });
-        tr.style.display = visible ? "" : "none";
       });
     });
-  </script>
+  });
+
+  document.querySelectorAll(".filter").forEach(drop => {
+    drop.addEventListener("change", () => {
+      applyFilters();
+      sortTableBody();
+    });
+  });
+}
+
+Promise.all([
+  loadConfig(),
+  fetchGeoJSON(),
+  get(ref(db))
+]).then(([config, geojson, snapshot]) => {
+  const parcels = {};
+  const uids = [];
+  geojson.features.forEach(f => {
+    const uid = f.properties.uid;
+    if (uid) {
+      uids.push(uid);
+      parcels[uid] = f.properties;
+    }
+  });
+  renderTable(uids, parcels, snapshot.val() || {}, config);
+});
+</script>
 </body>
 </html>
