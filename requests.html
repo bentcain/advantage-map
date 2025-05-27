@@ -85,11 +85,9 @@
 
       const rowData = [];
 
-      uids.forEach(uid => {
+      Object.entries(fbData.requests || {}).forEach(([uid, requests]) => {
         const parcel = parcels[uid] || {};
-        const fb = fbData[uid] || {};
-        const status = fb.status || parcel.Status || "New";
-        const requests = fbData.requests?.[uid] || {};
+        const status = fbData[uid]?.status || parcel.Status || "New";
 
         Object.entries(requests).forEach(([reqId, req]) => {
           const comments = Array.isArray(req.comments) ? req.comments : Object.values(req.comments || {});
@@ -150,9 +148,7 @@
         });
       });
 
-      rowData
-        .sort((a, b) => a.order - b.order)
-        .forEach(r => tbody.appendChild(r.tr));
+      rowData.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
 
       document.querySelectorAll("select.filter").forEach(sel => {
         const col = sel.dataset.col;
