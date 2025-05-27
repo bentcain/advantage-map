@@ -73,7 +73,7 @@
       });
     }
 
-    const columns = ["uid", "text", "assignedTo", "createdBy", "status", "Status", "created", "", ""];
+    const columns = ["uid", "text", "assignedTo", "createdBy", "requestState", "status", "created", "", ""];
 
     function createFilterRow(data) {
       const filterRow = document.getElementById("filterRow");
@@ -109,14 +109,12 @@
       });
     }
 
-    function renderRow({ uid, requestId, request, Status }) {
+    function renderRow({ uid, requestId, request, status }) {
       const row = document.createElement("tr");
 
-      const color = statusColors[Status] || "";
-      if (color) row.style.backgroundColor = color;
+      row.dataset.searchable = `${uid} ${request.text} ${request.assignedTo} ${request.createdBy} ${request.status} ${status}`.toLowerCase();
+      row.style.backgroundColor = statusColors[status] || "";
       if (request.status === "closed") row.classList.add("closed");
-
-      row.dataset.searchable = `${uid} ${request.text} ${request.assignedTo} ${request.createdBy} ${request.status} ${Status}`.toLowerCase();
 
       row.innerHTML = `
         <td>${uid}</td>
@@ -124,7 +122,7 @@
         <td>${request.assignedTo}</td>
         <td>${request.createdBy}</td>
         <td>${request.status}</td>
-        <td>${Status}</td>
+        <td>${status}</td>
         <td>${new Date(request.createdAt).toLocaleString()}</td>
       `;
 
@@ -190,16 +188,16 @@
 
       Object.entries(requests).forEach(([uid, reqs]) => {
         Object.entries(reqs).forEach(([requestId, request]) => {
-          const Status = parcels[uid]?.status || parcels[uid]?.Status || "New";
+          const status = parcels[uid]?.status || parcels[uid]?.Status || "New";
           const entry = {
             uid,
             requestId,
             request,
-            Status,
+            status,
             text: request.text,
             assignedTo: request.assignedTo,
             createdBy: request.createdBy,
-            status: request.status,
+            requestState: request.status,
             created: new Date(request.createdAt).toLocaleString()
           };
           if (request.status === "closed") {
@@ -211,8 +209,8 @@
       });
 
       open.sort((a, b) => {
-        const sa = (a.Status || "New").toLowerCase();
-        const sb = (b.Status || "New").toLowerCase();
+        const sa = (a.status || "New").toLowerCase();
+        const sb = (b.status || "New").toLowerCase();
         return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
       });
 
