@@ -94,7 +94,7 @@
       uids.forEach(uid => {
         const parcel = parcels[uid] || {};
         const fb = fbData[uid] || {};
-        const status = fb.status || "New";
+        const status = fb.status || parcel.Status || "New";
         const notes = Array.isArray(fb.notes) ? fb.notes : Object.values(fb.notes || {});
         const requests = fbData.requests?.[uid] || {};
         const replies = [];
