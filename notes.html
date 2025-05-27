@@ -62,11 +62,8 @@
 
     function buildTable() {
       const uids = uidParam ? [uidParam] : Object.keys(parcels);
-
-      // Only show first 2 config-defined fields after UID
-      const dynamicCols = config.columns.filter(c => c !== "uid");
-      const columns = ["uid", ...dynamicCols.filter(c => c !== "Status").slice(0, 2), "Status", "New Note", "Save", "Note History"];
-
+      const dynamicCols = config.columns.filter(c => c !== "uid" && c !== "Status");
+      const columns = ["uid", ...dynamicCols.slice(0, 2), "Status", "New Note", "Save", "Note History"];
 
       const headerRow = document.getElementById("headerRow");
       const filterRow = document.getElementById("filterRow");
