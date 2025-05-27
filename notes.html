@@ -85,11 +85,7 @@
         filterRow.appendChild(fth);
       });
 
-      uids.sort((a, b) => {
-        const sa = (fbData[a]?.status || "New").toLowerCase();
-        const sb = (fbData[b]?.status || "New").toLowerCase();
-        return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
-      });
+      const rowData = [];
 
       uids.forEach(uid => {
         const parcel = parcels[uid] || {};
@@ -110,7 +106,6 @@
         const tr = document.createElement("tr");
         tr.style.backgroundColor = statusColors[status] || "";
 
-        // searchable excludes parcel.Status
         const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${fullNotes.map(n => n.text).join(" ")}`.toLowerCase();
         tr.dataset.searchable = searchable;
 
@@ -199,9 +194,13 @@
           tr.appendChild(td);
         });
 
-        allRows.push(tr);
-        tbody.appendChild(tr);
+        const order = statusOrder[status.toLowerCase()] || 99;
+        rowData.push({ tr, order });
       });
+
+      rowData
+        .sort((a, b) => a.order - b.order)
+        .forEach(r => tbody.appendChild(r.tr));
 
       document.querySelectorAll("select.filter").forEach(sel => {
         const col = sel.dataset.col;
@@ -227,7 +226,7 @@
         if (sel.value) terms[sel.dataset.col] = sel.value;
       });
 
-      allRows.forEach(tr => {
+      document.querySelectorAll("tbody tr").forEach(tr => {
         const visible = Object.entries(terms).every(([col, val]) => {
           const idx = [...tr.cells].findIndex(td => td.parentElement.children[idx]?.textContent === col);
           return tr.cells[idx]?.textContent.includes(val);
@@ -238,7 +237,7 @@
 
     document.getElementById("searchInput").addEventListener("input", () => {
       const term = document.getElementById("searchInput").value.toLowerCase();
-      allRows.forEach(tr => {
+      document.querySelectorAll("tbody tr").forEach(tr => {
         tr.style.display = tr.dataset.searchable.includes(term) ? "" : "none";
       });
     });
