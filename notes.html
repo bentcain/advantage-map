@@ -9,61 +9,49 @@
     body { font-family: sans-serif; margin: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
-    input, select, textarea { width: 100%; font-size: 14px; }
+    input, select, textarea { font-size: 14px; width: 100%; }
     textarea { resize: vertical; }
-    .filter-bar { margin-top: 10px; display: flex; gap: 20px; align-items: center; }
+    .request-tag { font-weight: bold; color: red; }
+    .reply-box { margin-top: 5px; }
   </style>
 </head>
 <body>
   <h2>Parcel Notes Dashboard</h2>
-
-  <div class="filter-bar">
-    <input type="text" id="searchInput" placeholder="Search..." />
-    <label for="requestFilter">Request Filter:</label>
-    <select id="requestFilter">
-      <option value="all">All Notes</option>
-      <option value="requests">Requests Only</option>
-      <option value="open">Open Requests</option>
-      <option value="closed">Closed Requests</option>
-    </select>
-  </div>
-
+  <input type="text" id="searchInput" placeholder="Search..." />
+  Request Filter:
+  <select id="requestFilter">
+    <option value="all">All Notes</option>
+    <option value="open">Open Requests</option>
+    <option value="closed">Closed Requests</option>
+  </select>
   <table id="notesTable">
-    <thead>
-      <tr id="filterRow"></tr>
-      <tr id="headerRow"></tr>
-    </thead>
+    <thead><tr id="headerRow"></tr></thead>
     <tbody></tbody>
   </table>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-    import { getDatabase, ref, child, get, update } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+    import { getDatabase, ref, get, update, child } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
     import { firebaseConfig } from './firebase-config.js';
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const uidParam = new URLSearchParams(window.location.search).get("uid");
     const currentUser = localStorage.getItem("username") || "Ben";
+    const uidParam = new URLSearchParams(window.location.search).get("uid");
 
-    let config = {}, statusColors = {}, statusOrder = {}, parcels = {}, fbData = {};
-    let allRows = [];
+    let config = {}, parcels = {}, fbData = {}, allRows = [];
 
     async function loadConfig() {
       const res = await fetch("project_config.json");
       config = await res.json();
-      config.statuses.forEach(s => {
-        statusColors[s.name] = s.color;
-        statusOrder[s.name.toLowerCase()] = s.order;
-      });
     }
 
-    async function loadGeojson() {
+    async function loadParcels() {
       const file = await fetch("geojson_filename.txt").then(r => r.text());
-      const data = await fetch(file.trim()).then(r => r.json());
-      data.features.forEach(f => {
+      const geojson = await fetch(file.trim()).then(r => r.json());
+      geojson.features.forEach(f => {
         const uid = f.properties.uid;
-        if (uid) parcels[uid] = f.properties;
+        parcels[uid] = f.properties;
       });
     }
 
@@ -73,76 +61,38 @@
     }
 
     function buildTable() {
-      const uids = uidParam ? [uidParam] : Object.keys(parcels);
-      const dynamicCols = config.columns.filter(c => c !== "uid");
-      const columns = ["uid", ...dynamicCols.slice(0, 2), "Status", "New Note", "Save", "Note History"];
-
+      const columns = ["uid", ...config.columns.slice(1, 3), "Status", "New Note", "Save", "Note History"];
       const headerRow = document.getElementById("headerRow");
-      const filterRow = document.getElementById("filterRow");
       const tbody = document.querySelector("#notesTable tbody");
       headerRow.innerHTML = "";
-      filterRow.innerHTML = "";
       tbody.innerHTML = "";
       allRows = [];
 
       columns.forEach(col => {
-        headerRow.innerHTML += `<th>${col}</th>`;
-        const fth = document.createElement("th");
-        if (!["New Note", "Save", "Note History"].includes(col)) {
-          const sel = document.createElement("select");
-          sel.innerHTML = `<option value="">All</option>`;
-          sel.dataset.col = col;
-          sel.className = "filter";
-          fth.appendChild(sel);
-        }
-        filterRow.appendChild(fth);
+        const th = document.createElement("th");
+        th.textContent = col;
+        headerRow.appendChild(th);
       });
 
-      uids.sort((a, b) => {
-        const sa = (fbData[a]?.status || "New").toLowerCase();
-        const sb = (fbData[b]?.status || "New").toLowerCase();
-        return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
-      });
-
+      const uids = uidParam ? [uidParam] : Object.keys(parcels);
       uids.forEach(uid => {
+        const row = document.createElement("tr");
         const parcel = parcels[uid] || {};
         const fb = fbData[uid] || {};
+        const notes = Array.isArray(fb.notes) ? fb.notes : Object.values(fb.notes || []);
         const status = fb.status || "New";
-        const notes = Array.isArray(fb.notes) ? fb.notes : Object.values(fb.notes || {});
-        const requests = fbData.requests?.[uid] || {};
 
-        const replies = [];
-        Object.values(requests).forEach(r => {
-          (r.comments || []).forEach(c => {
-            replies.push({ text: "🔁 " + c.text, user: c.user, timestamp: c.timestamp, request: true, state: r.status });
-          });
-        });
-
-        const fullNotes = [...notes, ...replies].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        const tr = document.createElement("tr");
-        tr.style.backgroundColor = statusColors[status] || "";
-        const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${fullNotes.map(n => n.text).join(" ")}`.toLowerCase();
-        tr.dataset.searchable = searchable;
-
-        const noteStatuses = fullNotes.map(n => {
-          if (n.request && n.state === "closed") return "closed";
-          if (n.request) return "open";
-          return "note";
-        });
-        tr.dataset.requestStatus = noteStatuses.includes("open")
-          ? "open"
-          : noteStatuses.includes("closed")
-          ? "closed"
-          : "note";
+        row.dataset.uid = uid;
+        row.dataset.searchable = `${uid} ${parcel.Property || ""} ${parcel.Parent || ""} ${status} ${notes.map(n => n.text).join(" ")}`.toLowerCase();
+        row.dataset.hasOpenRequest = notes.some(n => n.request && n.requestStatus !== "closed");
 
         columns.forEach(col => {
           const td = document.createElement("td");
+
           if (col === "uid") td.textContent = uid;
-          else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
+          else if (config.columns.includes(col)) td.textContent = parcel[col] || "";
           else if (col === "Status") {
             const sel = document.createElement("select");
-            sel.className = "status";
             config.statuses.forEach(s => {
               const opt = document.createElement("option");
               opt.value = s.name;
@@ -151,126 +101,107 @@
               sel.appendChild(opt);
             });
             td.appendChild(sel);
-          } else if (col === "New Note") {
-            const ta = document.createElement("textarea");
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            const label = document.createElement("label");
-            label.appendChild(checkbox);
-            label.append(" This is a request");
-
-            const assignBox = document.createElement("input");
-            assignBox.placeholder = "Assign To...";
-            assignBox.style.display = "none";
-
-            checkbox.onchange = () => {
-              assignBox.style.display = checkbox.checked ? "block" : "none";
+          }
+          else if (col === "New Note") {
+            td.innerHTML = `
+              <textarea></textarea>
+              <label><input type="checkbox" class="reqCheck" /> This is a request</label>
+              <input type="text" placeholder="Assign to..." class="assignBox" style="display:none;" />
+            `;
+            td.querySelector(".reqCheck").onchange = e => {
+              td.querySelector(".assignBox").style.display = e.target.checked ? "block" : "none";
             };
-
-            td.appendChild(ta);
-            td.appendChild(label);
-            td.appendChild(assignBox);
-          } else if (col === "Save") {
+          }
+          else if (col === "Save") {
             const btn = document.createElement("button");
             btn.textContent = "💾";
-            btn.onclick = () => {
-              const status = tr.querySelector("select.status").value;
-              const note = tr.querySelector("textarea").value.trim();
-              const request = tr.querySelector("input[type='checkbox']").checked;
-              const assignee = tr.querySelector("input[placeholder='Assign To...']").value.trim();
+            btn.onclick = async () => {
+              const sel = row.querySelector("select");
+              const note = row.querySelector("textarea").value.trim();
+              const req = row.querySelector(".reqCheck").checked;
+              const assignee = row.querySelector(".assignBox").value.trim();
+              if (!note && !sel.value) return;
 
-              const noteObj = {
-                text: note,
-                user: currentUser,
-                timestamp: new Date().toISOString()
-              };
+              const newNote = { text: note, user: currentUser, timestamp: new Date().toISOString() };
+              if (req) {
+                newNote.request = true;
+                newNote.assignedTo = assignee || "Unassigned";
+                newNote.requestStatus = "open";
+              }
 
-              const noteRef = child(ref(db), `${uid}/notes`);
-              get(noteRef).then(snapshot => {
-                const existing = snapshot.val() || [];
-                const notes = Array.isArray(existing) ? existing : Object.values(existing);
-                if (note) notes.push(noteObj);
-
-                update(ref(db, uid), { status, notes }).then(() => {
-                  if (request) {
-                    const reqId = `${Date.now()}_${currentUser.toLowerCase()}`;
-                    const req = {
-                      text: note,
-                      createdBy: currentUser,
-                      assignedTo: assignee || "Unassigned",
-                      status: "open",
-                      createdAt: new Date().toISOString(),
-                      comments: []
-                    };
-                    update(ref(db, `requests/${uid}/${reqId}`), req);
-                  }
-                  alert("Saved!");
-                  location.reload();
-                });
-              });
+              const notesRef = child(ref(db), `${uid}/notes`);
+              const snap = await get(notesRef);
+              const existing = snap.val() || [];
+              const notesArr = Array.isArray(existing) ? existing : Object.values(existing);
+              notesArr.push(newNote);
+              await update(ref(db, uid), { status: sel.value, notes: notesArr });
+              alert("Saved!"); location.reload();
             };
             td.appendChild(btn);
-          } else if (col === "Note History") {
-            td.innerHTML = fullNotes.map(n => {
-              const type = n.request ? (n.text.startsWith("🔁") ? "reply" : "request") : "note";
-              const style = type === "reply"
-                ? "color:#004;"
-                : type === "request"
-                ? "background:#ffe;border-left:4px solid orange;padding:5px;"
-                : "";
-              return `<div style="${style}"><strong>${n.user || "?"}:</strong> ${n.text}<br><small>${n.timestamp || ""}</small></div><hr>`;
-            }).join("") || "<em>No notes</em>";
           }
-          tr.appendChild(td);
+          else if (col === "Note History") {
+            td.innerHTML = notes.map((n, idx) => `
+              <div style="margin-bottom:8px;">
+                <strong>${n.user || "?"}:</strong> ${n.text || ""}<br/>
+                <small>${n.timestamp || ""}</small><br/>
+                ${n.request ? `<span class="request-tag">[Request]</span> Assigned to: ${n.assignedTo || "?"}<br/>
+                  ${n.requestStatus !== "closed" ? `
+                  <div class="reply-box">
+                    <input type="text" placeholder="Reply..." data-uid="${uid}" data-index="${idx}" />
+                    <button onclick="replyToRequest('${uid}', ${idx})">Reply</button>
+                    <button onclick="closeRequest('${uid}', ${idx})">Close Request</button>
+                  </div>` : `<em>(Closed)</em>`}
+                ` : ""}
+              </div>
+            `).join("");
+          }
+
+          row.appendChild(td);
         });
 
-        allRows.push(tr);
-        tbody.appendChild(tr);
-      });
-
-      document.querySelectorAll("select.filter").forEach(sel => {
-        const col = sel.dataset.col;
-        const idx = columns.indexOf(col);
-        const values = new Set();
-        allRows.forEach(row => {
-          const val = row.cells[idx]?.textContent;
-          if (val) values.add(val);
-        });
-        [...values].sort().forEach(v => {
-          const opt = document.createElement("option");
-          opt.value = v;
-          opt.textContent = v;
-          sel.appendChild(opt);
-        });
-        sel.addEventListener("change", applyFilters);
+        tbody.appendChild(row);
+        allRows.push(row);
       });
     }
 
-    function applyFilters() {
-      const searchTerm = document.getElementById("searchInput").value.toLowerCase();
-      const requestFilter = document.getElementById("requestFilter").value;
-      const filters = {};
-      document.querySelectorAll("select.filter").forEach(sel => {
-        if (sel.value) filters[sel.dataset.col] = sel.value;
-      });
+    window.replyToRequest = async (uid, idx) => {
+      const input = document.querySelector(`input[data-uid="${uid}"][data-index="${idx}"]`);
+      if (!input.value.trim()) return;
+      const snap = await get(child(ref(db), `${uid}/notes`));
+      const notes = Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val());
+      notes.push({ text: "🔁 " + input.value.trim(), user: currentUser, timestamp: new Date().toISOString() });
+      await update(ref(db, uid), { notes });
+      alert("Reply saved!"); location.reload();
+    };
 
+    window.closeRequest = async (uid, idx) => {
+      const snap = await get(child(ref(db), `${uid}/notes`));
+      const notes = Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val());
+      if (notes[idx]) notes[idx].requestStatus = "closed";
+      await update(ref(db, uid), { notes });
+      alert("Request closed!"); location.reload();
+    };
+
+    document.getElementById("searchInput").oninput = () => {
+      const q = document.getElementById("searchInput").value.toLowerCase();
+      allRows.forEach(r => {
+        r.style.display = r.dataset.searchable.includes(q) ? "" : "none";
+      });
+    };
+
+    document.getElementById("requestFilter").onchange = () => {
+      const mode = document.getElementById("requestFilter").value;
       allRows.forEach(row => {
-        const matchesSearch = row.dataset.searchable.includes(searchTerm);
-        const matchesRequest = requestFilter === "all" || row.dataset.requestStatus === requestFilter;
-        const matchesColumn = Object.entries(filters).every(([col, val]) => {
-          const idx = [...row.cells].findIndex(td => td.parentElement.children[idx]?.textContent === col);
-          return row.cells[idx]?.textContent.includes(val);
-        });
-
-        row.style.display = matchesSearch && matchesRequest && matchesColumn ? "" : "none";
+        const hasReq = row.dataset.hasOpenRequest === "true";
+        row.style.display =
+          mode === "all" ? "" :
+          mode === "open" ? (hasReq ? "" : "none") :
+          mode === "closed" ? (hasReq ? "none" : "") : "";
       });
-    }
-
-    document.getElementById("searchInput").addEventListener("input", applyFilters);
-    document.getElementById("requestFilter").addEventListener("change", applyFilters);
+    };
 
     await loadConfig();
-    await loadGeojson();
+    await loadParcels();
     await loadFirebase();
     buildTable();
   </script>
