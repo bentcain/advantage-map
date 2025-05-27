@@ -109,6 +109,8 @@
 
         const tr = document.createElement("tr");
         tr.style.backgroundColor = statusColors[status] || "";
+
+        // searchable excludes parcel.Status
         const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${fullNotes.map(n => n.text).join(" ")}`.toLowerCase();
         tr.dataset.searchable = searchable;
 
