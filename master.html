@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Notes Dashboard</title>
+  <title>Master Parcel Dashboard</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
@@ -28,21 +28,21 @@
     th, td {
       padding: 6px;
       border: 1px solid #ccc;
+      text-align: left;
     }
     select.filter {
       width: 100%;
       margin-bottom: 4px;
     }
-    textarea {
-      width: 95%;
-      resize: vertical;
+    .status-dropdown {
+      width: 100%;
     }
   </style>
 </head>
 <body>
-  <h2>Parcel Notes Dashboard</h2>
-  <input type="text" id="searchInput" placeholder="Search notes..." />
-  <table id="notesTable">
+  <h2>Master Parcel Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search parcels..." />
+  <table id="parcelTable">
     <thead>
       <tr id="filterRow"></tr>
       <tr id="headerRow"></tr>
@@ -66,14 +66,16 @@
 
     let config = {};
     let statusColors = {};
+    let statusOrder = {};
     let parcels = {};
-    let allRows = [];
+    let allData = [];
 
     async function loadConfig() {
       const res = await fetch("project_config.json");
       config = await res.json();
       config.statuses.forEach(s => {
         statusColors[s.name] = s.color;
+        statusOrder[s.name] = s.order;
       });
     }
 
@@ -86,21 +88,21 @@
       });
     }
 
-    async function loadNotes() {
+    async function loadData() {
       const snapshot = await db.ref().once("value");
-      const all = snapshot.val() || {};
-      const tbody = document.querySelector("#notesTable tbody");
+      const firebaseData = snapshot.val() || {};
+      const tbody = document.querySelector("#parcelTable tbody");
       const headerRow = document.getElementById("headerRow");
       const filterRow = document.getElementById("filterRow");
 
-      const displayColumns = ["uid", config.columns[0], config.columns[1], "Status", "New Note", "Save", "Note History"];
-      displayColumns.forEach((col, i) => {
+      const fullColumns = config.columns.concat(["Current Status", "Last Note", "Actions"]);
+      fullColumns.forEach((col, i) => {
         const th = document.createElement("th");
         th.textContent = col;
         headerRow.appendChild(th);
 
         const fth = document.createElement("th");
-        if (!["New Note", "Save"].includes(col)) {
+        if (col !== "New Note" && col !== "Actions") {
           const select = document.createElement("select");
           select.className = "filter";
           select.dataset.index = i;
@@ -110,114 +112,94 @@
         filterRow.appendChild(fth);
       });
 
-      Object.entries(all).forEach(([uid, data]) => {
+      Object.entries(firebaseData).forEach(([uid, data]) => {
+        const row = document.createElement("tr");
         const parcel = parcels[uid] || {};
         const status = data.status || "New";
         const notes = data.notes || [];
         const lastNote = notes.length > 0 ? notes[notes.length - 1].text : "";
 
-        const tr = document.createElement("tr");
-        tr.dataset.searchable = JSON.stringify({ ...parcel, ...data }).toLowerCase();
-        if (statusColors[status]) tr.style.backgroundColor = statusColors[status];
+        row.dataset.searchable = JSON.stringify({ ...parcel, ...data }).toLowerCase();
+        row.className = status.replace(/ /g, "_");
+        if (statusColors[status]) row.style.backgroundColor = statusColors[status];
 
-        const rowData = {
-          uid: uid,
-          [config.columns[0]]: parcel[config.columns[0]] || "",
-          [config.columns[1]]: parcel[config.columns[1]] || ""
-        };
-
-        displayColumns.forEach(col => {
+        config.columns.forEach(col => {
           const td = document.createElement("td");
-
-          if (col === "uid") td.textContent = uid;
-          else if (col === config.columns[0] || col === config.columns[1]) td.textContent = rowData[col];
-          else if (col === "Status") {
-            const select = document.createElement("select");
-            config.statuses.forEach(s => {
-              const opt = document.createElement("option");
-              opt.value = s.name;
-              opt.textContent = s.name;
-              if (s.name === status) opt.selected = true;
-              select.appendChild(opt);
-            });
-            td.appendChild(select);
-          }
-          else if (col === "New Note") {
-            const textarea = document.createElement("textarea");
-            textarea.rows = 3;
-            td.appendChild(textarea);
-          }
-          else if (col === "Save") {
-            const btn = document.createElement("button");
-            btn.textContent = "💾 Save";
-            btn.onclick = () => {
-              const newStatus = tr.querySelector("select").value;
-              const note = tr.querySelector("textarea").value.trim();
-              const updateObj = {};
-              if (newStatus) updateObj.status = newStatus;
-
-              if (note) {
-                const existing = data.notes || [];
-                existing.push({
-                  text: note,
-                  user: "Ben",
-                  timestamp: new Date().toISOString()
-                });
-                updateObj.notes = existing;
-              }
-
-              db.ref(uid).update(updateObj).then(() => {
-                alert("Saved.");
-                location.reload();
-              });
-            };
-            td.appendChild(btn);
-          }
-          else if (col === "Note History") {
-            td.innerHTML = notes.map(n => `<div>${n.text}<br><small>${n.user || ""} – ${n.timestamp || ""}</small></div>`).join("<hr>");
-          }
-
-          tr.appendChild(td);
+          td.textContent = data[col] ?? parcel[col] ?? "";
+          row.appendChild(td);
         });
 
-        allRows.push(tr);
-        tbody.appendChild(tr);
+        const statusTd = document.createElement("td");
+        const select = document.createElement("select");
+        select.className = "status-dropdown";
+        config.statuses.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.name;
+          opt.textContent = s.name;
+          if (s.name === status) opt.selected = true;
+          select.appendChild(opt);
+        });
+        statusTd.appendChild(select);
+        row.appendChild(statusTd);
+
+        const noteTd = document.createElement("td");
+        noteTd.textContent = lastNote;
+        row.appendChild(noteTd);
+
+        const actionTd = document.createElement("td");
+        actionTd.innerHTML = `
+          <a href="notes.html?uid=${uid}" target="_blank">📝 Notes</a> |
+          <a href="index.html?uid=${uid}" target="_blank">🗺️ Map</a>`;
+        row.appendChild(actionTd);
+
+        allData.push({ uid, row, statusOrder: statusOrder[status] || 999 });
+
+        select.onchange = () => {
+          db.ref(uid).update({ status: select.value }).then(() => {
+            row.style.backgroundColor = statusColors[select.value] || "";
+            row.className = select.value.replace(/ /g, "_");
+            alert("Status updated.");
+          });
+        };
       });
 
       // Populate filters
-      displayColumns.forEach((col, i) => {
+      fullColumns.forEach((col, i) => {
         const values = new Set();
-        allRows.forEach(tr => {
-          const td = tr.children[i];
-          if (td) values.add(td.textContent.trim());
+        allData.forEach(obj => {
+          const cell = obj.row.children[i];
+          if (cell) values.add(cell.textContent.trim());
         });
         const select = filterRow.children[i]?.querySelector("select");
         if (select) {
           [...values].sort().forEach(val => {
-            const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = val;
-            select.appendChild(opt);
+            const option = document.createElement("option");
+            option.value = val;
+            option.textContent = val;
+            select.appendChild(option);
           });
         }
       });
+
+      allData.sort((a, b) => a.statusOrder - b.statusOrder);
+      allData.forEach(obj => tbody.appendChild(obj.row));
     }
 
     async function init() {
       await loadConfig();
       await loadGeojson();
-      await loadNotes();
+      await loadData();
     }
 
     init();
 
-    // Debounced search
+    // Search with debounce
     let searchTimeout = null;
     document.getElementById("searchInput").addEventListener("input", e => {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         const val = e.target.value.toLowerCase();
-        document.querySelectorAll("#notesTable tbody tr").forEach(tr => {
+        document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
           tr.style.display = tr.dataset.searchable.includes(val) ? "" : "none";
         });
       }, 300);
@@ -226,7 +208,7 @@
     // Filter logic
     document.getElementById("filterRow").addEventListener("change", () => {
       const filters = [...document.querySelectorAll("select.filter")].map(s => s.value);
-      document.querySelectorAll("#notesTable tbody tr").forEach(tr => {
+      document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
         const tds = tr.children;
         let visible = true;
         filters.forEach((val, i) => {
