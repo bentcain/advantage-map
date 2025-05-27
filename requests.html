@@ -14,6 +14,7 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
+      font-size: 14px;
     }
     th, td {
       border: 1px solid #ccc;
@@ -28,16 +29,14 @@
       width: 100%;
       margin-bottom: 4px;
     }
-    .New { background-color: #ffffff; }
-    .Follow_Up { background-color: #ffe699; }
-    .On_Hold { background-color: #d9d9d9; }
-    .Conversion { background-color: #c6efce; }
-    .Not_Interested { background-color: #f4cccc; }
-    .closed { opacity: 0.6; }
+    .closed {
+      opacity: 0.6;
+    }
   </style>
 </head>
 <body>
   <h2>Request Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search..." />
   <table id="requestTable">
     <thead>
       <tr id="filterRow"></tr>
@@ -56,24 +55,25 @@
     <tbody></tbody>
   </table>
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
-      authDomain: "parcel-notes-system.firebaseapp.com",
-      projectId: "parcel-notes-system",
-      storageBucket: "parcel-notes-system.appspot.com",
-      messagingSenderId: "538142262863",
-      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
-      measurementId: "G-GQ3CQ9EKPH",
-      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
-    };
+  <script type="module">
+    import { firebaseConfig } from './firebase-config.js';
 
-    firebase.initializeApp(firebaseConfig);
+    const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const currentUser = localStorage.getItem("username") || "Ben";
 
-    const columns = ["uid", "text", "assignedTo", "createdBy", "status", "leadStatus", "created", "", ""]; // for filtering
-    let allRequests = [];
+    let statusColors = {}, statusOrder = {}, config = {};
+
+    async function loadConfig() {
+      const res = await fetch("project_config.json");
+      config = await res.json();
+      config.statuses.forEach(s => {
+        statusColors[s.name] = s.color;
+        statusOrder[s.name.toLowerCase()] = s.order;
+      });
+    }
+
+    const columns = ["uid", "text", "assignedTo", "createdBy", "status", "leadStatus", "created", "", ""];
 
     function createFilterRow(data) {
       const filterRow = document.getElementById("filterRow");
@@ -111,9 +111,12 @@
 
     function renderRow({ uid, requestId, request, leadStatus }) {
       const row = document.createElement("tr");
-      const safeStatus = (leadStatus || "").replace(/ /g, "_");
-      if (safeStatus) row.classList.add(safeStatus);
+
+      const color = statusColors[leadStatus] || "";
+      if (color) row.style.backgroundColor = color;
       if (request.status === "closed") row.classList.add("closed");
+
+      row.dataset.searchable = `${uid} ${request.text} ${request.assignedTo} ${request.createdBy} ${request.status} ${leadStatus}`.toLowerCase();
 
       row.innerHTML = `
         <td>${uid}</td>
@@ -121,7 +124,7 @@
         <td>${request.assignedTo}</td>
         <td>${request.createdBy}</td>
         <td>${request.status}</td>
-        <td>${leadStatus || "—"}</td>
+        <td>${leadStatus}</td>
         <td>${new Date(request.createdAt).toLocaleString()}</td>
       `;
 
@@ -173,43 +176,60 @@
       document.querySelector("#requestTable tbody").appendChild(row);
     }
 
-    function loadRequests() {
-      Promise.all([
+    async function loadRequests() {
+      await loadConfig();
+      const [requestsSnap, geoSnap] = await Promise.all([
         db.ref("requests").once("value"),
         db.ref().once("value")
-      ]).then(([requestsSnap, geoSnap]) => {
-        const requests = requestsSnap.val() || {};
-        const parcels = geoSnap.val() || {};
+      ]);
 
-        const open = [], closed = [];
+      const requests = requestsSnap.val() || {};
+      const parcels = geoSnap.val() || {};
 
-        Object.entries(requests).forEach(([uid, reqs]) => {
-          Object.entries(reqs).forEach(([requestId, request]) => {
-            const leadStatus = parcels[uid]?.status || "";
-            const entry = {
-              uid,
-              requestId,
-              request,
-              leadStatus,
-              text: request.text,
-              assignedTo: request.assignedTo,
-              createdBy: request.createdBy,
-              status: request.status,
-              created: new Date(request.createdAt).toLocaleString()
-            };
-            if (request.status === "closed") closed.push(entry);
-            else open.push(entry);
-          });
+      const open = [], closed = [];
+
+      Object.entries(requests).forEach(([uid, reqs]) => {
+        Object.entries(reqs).forEach(([requestId, request]) => {
+          const leadStatus = parcels[uid]?.status || parcels[uid]?.Status || "New";
+          const entry = {
+            uid,
+            requestId,
+            request,
+            leadStatus,
+            text: request.text,
+            assignedTo: request.assignedTo,
+            createdBy: request.createdBy,
+            status: request.status,
+            created: new Date(request.createdAt).toLocaleString()
+          };
+          if (request.status === "closed") {
+            closed.push(entry);
+          } else {
+            open.push(entry);
+          }
         });
-
-        open.sort((a, b) => new Date(a.request.createdAt) - new Date(b.request.createdAt));
-        closed.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
-        allRequests = [...open, ...closed];
-
-        createFilterRow(allRequests);
-        allRequests.forEach(renderRow);
       });
+
+      open.sort((a, b) => {
+        const sa = (a.leadStatus || "New").toLowerCase();
+        const sb = (b.leadStatus || "New").toLowerCase();
+        return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
+      });
+
+      closed.sort((a, b) => new Date(b.request.closedAt || 0) - new Date(a.request.closedAt || 0));
+      const allRequests = [...open, ...closed];
+
+      createFilterRow(allRequests);
+      allRequests.forEach(renderRow);
     }
+
+    // 🔍 Search bar logic
+    document.getElementById("searchInput").addEventListener("input", () => {
+      const val = document.getElementById("searchInput").value.toLowerCase();
+      document.querySelectorAll("#requestTable tbody tr").forEach(row => {
+        row.style.display = row.dataset.searchable.includes(val) ? "" : "none";
+      });
+    });
 
     loadRequests();
   </script>
