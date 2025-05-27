@@ -63,9 +63,9 @@
     function buildTable() {
       const uids = uidParam ? [uidParam] : Object.keys(parcels);
 
-      // avoid repeating uid if it’s already in config
+      // Only show first 2 config-defined fields after UID
       const dynamicCols = config.columns.filter(c => c !== "uid");
-      const columns = ["uid", ...dynamicCols, "Status", "New Note", "Save", "Note History"];
+      const columns = ["uid", ...dynamicCols.slice(0, 2), "Status", "New Note", "Save", "Note History"];
 
       const headerRow = document.getElementById("headerRow");
       const filterRow = document.getElementById("filterRow");
@@ -74,7 +74,7 @@
       filterRow.innerHTML = "";
       tbody.innerHTML = "";
 
-      columns.forEach((col, i) => {
+      columns.forEach(col => {
         headerRow.innerHTML += `<th>${col}</th>`;
         const fth = document.createElement("th");
         if (!["New Note", "Save", "Note History"].includes(col)) {
@@ -111,13 +111,13 @@
 
         const tr = document.createElement("tr");
         tr.style.backgroundColor = statusColors[status] || "";
-        const searchable = `${uid} ${config.columns.map(k => parcel[k] || "").join(" ")} ${status} ${fullNotes.map(n => n.text).join(" ")}`.toLowerCase();
+        const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${fullNotes.map(n => n.text).join(" ")}`.toLowerCase();
         tr.dataset.searchable = searchable;
 
         columns.forEach(col => {
           const td = document.createElement("td");
           if (col === "uid") td.textContent = uid;
-          else if (config.columns.includes(col)) td.textContent = parcel[col] || "";
+          else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
           else if (col === "Status") {
             const sel = document.createElement("select");
             sel.className = "status";
