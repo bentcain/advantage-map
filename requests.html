@@ -188,7 +188,8 @@
 
       Object.entries(requests).forEach(([uid, reqs]) => {
         Object.entries(reqs).forEach(([requestId, request]) => {
-          const status = parcels[uid]?.status || parcels[uid]?.Status || "New";
+          const status = fbData[uid]?.status || parcels[uid]?.Status || "New";
+
           const entry = {
             uid,
             requestId,
