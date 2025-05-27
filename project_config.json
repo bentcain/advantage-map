@@ -1,0 +1,21 @@
+{
+  "columns": [
+    "uid", "Property", "Parent", "Source", "Tier",
+    "Project", "Acreage", "Parcel ID", "County", "Status"
+  ],
+  "statuses": [
+    { "name": "Signed", "color": "#4B0082", "order": 1 },
+    { "name": "Attorney Review", "color": "#7C5CA5", "order": 2 },
+    { "name": "Lease Sent", "color": "#B59EDB", "order": 3 },
+    { "name": "Working", "color": "#E98FBF", "order": 4 },
+    { "name": "Conversion", "color": "#FFC0CB", "order": 5 },
+    { "name": "Follow Up 3", "color": "#FFFF99", "order": 6 },
+    { "name": "Follow Up 2", "color": "#FFFF99", "order": 7 },
+    { "name": "Follow Up 1", "color": "#FFFF99", "order": 8 },
+    { "name": "New w Contact", "color": "#00008B", "order": 9 },
+    { "name": "New", "color": "#ADD8E6", "order": 10 },
+    { "name": "On Hold", "color": "#FFA500", "order": 11 },
+    { "name": "Not Interested", "color": "#FF9999", "order": 12 },
+    { "name": "Denied", "color": "#8B0000", "order": 13 }
+  ]
+}

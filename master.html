@@ -1,210 +1,217 @@
-<!-- version: master.html - Phase 4: notes link integration - 2025-05-24 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Master Parcel Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 1rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 14px; }
-    th, td { border: 1px solid #ddd; padding: 6px 8px; }
-    th { background: #f5f5f5; position: sticky; top: 0; z-index: 2; }
-    tr:hover { background-color: #f1f1f1; }
-    input[type="text"] { padding: 6px; width: 300px; margin-bottom: 10px; }
-    select, textarea { width: 100%; font-size: 14px; }
-    .row-color-New { background: #e0effa; }
-    .row-color-FollowUp { background: #ffe7cc; }
-    .row-color-OnHold { background: #dbf0db; }
-    .row-color-Conversion { background: #fbdada; }
-    .row-color-NotInterested { background: #eeeeee; }
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    input[type="text"] {
+      margin-bottom: 10px;
+      padding: 4px;
+      width: 300px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 1;
+    }
+    th, td {
+      padding: 6px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    select.filter {
+      width: 100%;
+      margin-bottom: 4px;
+    }
+    .status-dropdown {
+      width: 100%;
+    }
   </style>
 </head>
 <body>
-<h2>📋 Master Parcel Dashboard</h2>
-<input type="text" id="searchBox" placeholder="Search within filtered rows..." />
-<div id="tableContainer">Loading...</div>
+  <h2>Master Parcel Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search parcels..." />
+  <table id="parcelTable">
+    <thead>
+      <tr id="filterRow"></tr>
+      <tr id="headerRow"></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-import { getDatabase, ref, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js';
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyD7JkobzpJcrOHU_fNwXuEQqdYL1iAiiRQ",
+      authDomain: "parcel-notes-system.firebaseapp.com",
+      projectId: "parcel-notes-system",
+      storageBucket: "parcel-notes-system.appspot.com",
+      messagingSenderId: "538142262863",
+      appId: "1:538142262863:web:89dfd4cf60bb2dc4694c3a",
+      databaseURL: "https://parcel-notes-system-default-rtdb.firebaseio.com"
+    };
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-const statusOrder = {
-  "conversion": 1,
-  "follow up": 2,
-  "follow up 1": 2,
-  "follow up 2": 2,
-  "follow up 3": 2,
-  "not interested": 3,
-  "new": 4,
-  "on hold": 5
-};
+    let config = {};
+    let statusColors = {};
+    let statusOrder = {};
+    let allData = [];
 
-const geojsonFile = "geojson_filename.txt";
-let allRows = [], tableColumns = [];
-
-const fetchGeoJSON = async () => {
-  const filename = await fetch(geojsonFile).then(res => res.text());
-  return fetch(filename.trim()).then(res => res.json());
-};
-
-function sortRowArray(rows) {
-  return rows.sort((a, b) => {
-    const s1 = a.Status?.toLowerCase() || "z";
-    const s2 = b.Status?.toLowerCase() || "z";
-    return (statusOrder[s1] || 99) - (statusOrder[s2] || 99);
-  });
-}
-
-function sortTableBody() {
-  const tbody = document.querySelector("tbody");
-  const rows = Array.from(tbody.querySelectorAll("tr")).filter(r => r.style.display !== "none");
-  rows.sort((a, b) => {
-    const sa = a.querySelector("select.status")?.value?.toLowerCase() || "z";
-    const sb = b.querySelector("select.status")?.value?.toLowerCase() || "z";
-    return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
-  });
-  rows.forEach(row => tbody.appendChild(row));
-}
-
-const renderTable = (features, fbData) => {
-  const container = document.getElementById("tableContainer");
-  const keys = new Set();
-  features.forEach(f => Object.keys(f.properties).forEach(k => keys.add(k)));
-
-  const columns = Array.from(keys).filter(k => k !== "searchable" && k !== "Status" && k !== "uid");
-  columns.unshift("uid");
-  columns.push("Status", "New Note", "Save");
-  tableColumns = columns;
-
-  features.forEach(f => {
-    const uid = f.properties.uid;
-    const fb = fbData[uid] || {};
-    f.properties.Status = fb.status || f.properties.Status || "New";
-    f.properties.notes = fb.notes || [];
-  });
-
-  allRows = sortRowArray(features.map(f => f.properties));
-
-  const dropdowns = columns.map(col => {
-    if (col === "New Note" || col === "Save") return `<th>${col}</th>`;
-    const values = [...new Set(allRows.map(row => row[col]).filter(Boolean))].sort();
-    return `<th>
-      <select data-col="${col}" class="filter">
-        <option value="">All ${col}</option>
-        ${values.map(v => `<option>${v}</option>`).join("")}
-      </select>
-    </th>`;
-  }).join("");
-
-  let html = `<table><thead><tr>${dropdowns}</tr><tr>${columns.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
-
-  for (const row of allRows) {
-    const uid = row.uid;
-    const rowClass = statusOrder[row.Status?.toLowerCase()] ? `row-color-${row.Status.split(" ")[0]}` : "";
-
-    html += `<tr class="${rowClass}" data-uid="${uid}">`;
-    columns.forEach(col => {
-      if (col === "Status") {
-        html += `<td>
-          <select class="status" data-uid="${uid}">
-            <option ${row.Status === "New" ? "selected" : ""}>New</option>
-            <option ${row.Status.startsWith("Follow Up") ? "selected" : ""}>Follow Up</option>
-            <option ${row.Status === "On Hold" ? "selected" : ""}>On Hold</option>
-            <option ${row.Status === "Conversion" ? "selected" : ""}>Conversion</option>
-            <option ${row.Status === "Not Interested" ? "selected" : ""}>Not Interested</option>
-          </select>
-        </td>`;
-      } else if (col === "New Note") {
-        html += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea>
-        <div><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></div>
-        </td>`;
-      } else if (col === "Save") {
-        html += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
-      } else {
-        html += `<td>${row[col] || ""}</td>`;
-      }
-    });
-    html += `</tr>`;
-  }
-
-  html += `</tbody></table>`;
-  container.innerHTML = html;
-
-  document.querySelectorAll(".save").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const uid = btn.dataset.uid;
-      const noteEl = document.querySelector(`textarea.note[data-uid='${uid}']`);
-      const statusEl = document.querySelector(`select.status[data-uid='${uid}']`);
-      const newNote = noteEl.value.trim();
-      const newStatus = statusEl.value;
-
-      if (!noteEl && !statusEl) return;
-
-      get(child(ref(db), `${uid}/notes`)).then(snapshot => {
-        const notes = snapshot.val() || [];
-        if (newNote) {
-          notes.push({ text: newNote, user: "Ben", timestamp: new Date().toISOString() });
-        }
-        update(ref(db, uid), { status: newStatus, notes }).then(() => {
-          alert("Saved!");
-          location.reload();
+    fetch("project_config.json")
+      .then(res => res.json())
+      .then(data => {
+        config = data;
+        data.statuses.forEach(s => {
+          statusColors[s.name] = s.color;
+          statusOrder[s.name] = s.order;
         });
+        loadData();
+      });
+
+    function loadData() {
+      db.ref().once("value").then(snapshot => {
+        const all = snapshot.val() || {};
+        const tbody = document.querySelector("#parcelTable tbody");
+        const headerRow = document.getElementById("headerRow");
+        const filterRow = document.getElementById("filterRow");
+
+        const fullColumns = config.columns.concat(["Current Status", "Last Note", "Actions"]);
+        fullColumns.forEach((col, i) => {
+          const th = document.createElement("th");
+          th.textContent = col;
+          headerRow.appendChild(th);
+
+          // Add filters
+          const fth = document.createElement("th");
+          if (col !== "New Note" && col !== "Actions") {
+            const select = document.createElement("select");
+            select.className = "filter";
+            select.dataset.index = i;
+            select.innerHTML = `<option value="">All</option>`;
+            fth.appendChild(select);
+          }
+          filterRow.appendChild(fth);
+        });
+
+        Object.entries(all).forEach(([uid, data]) => {
+          const row = document.createElement("tr");
+          const status = data.status || "New";
+          const notes = data.notes || [];
+          const lastNote = notes.length > 0 ? notes[notes.length - 1].text : "";
+
+          row.dataset.searchable = JSON.stringify(data).toLowerCase();
+          row.className = status.replace(/ /g, "_");
+          if (statusColors[status]) row.style.backgroundColor = statusColors[status];
+
+          config.columns.forEach(col => {
+            const td = document.createElement("td");
+            td.textContent = data[col] || "";
+            row.appendChild(td);
+          });
+
+          // Status dropdown
+          const statusTd = document.createElement("td");
+          const select = document.createElement("select");
+          select.className = "status-dropdown";
+          config.statuses.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.name;
+            opt.textContent = s.name;
+            if (s.name === status) opt.selected = true;
+            select.appendChild(opt);
+          });
+          statusTd.appendChild(select);
+          row.appendChild(statusTd);
+
+          // Last Note
+          const noteTd = document.createElement("td");
+          noteTd.textContent = lastNote;
+          row.appendChild(noteTd);
+
+          // Actions
+          const actionTd = document.createElement("td");
+          actionTd.innerHTML = `
+            <a href="notes.html?uid=${uid}" target="_blank">📝 Notes</a> |
+            <a href="index.html?uid=${uid}" target="_blank">🗺️ Map</a>`;
+          row.appendChild(actionTd);
+
+          // Track for search + sort
+          allData.push({
+            uid,
+            row,
+            statusOrder: statusOrder[status] || 999
+          });
+
+          // Change status
+          select.onchange = () => {
+            db.ref(uid).update({ status: select.value }).then(() => {
+              row.style.backgroundColor = statusColors[select.value] || "";
+              row.className = select.value.replace(/ /g, "_");
+              alert("Status updated.");
+            });
+          };
+        });
+
+        // Populate filter dropdowns
+        fullColumns.forEach((col, i) => {
+          const values = new Set();
+          allData.forEach(obj => {
+            const cell = obj.row.children[i];
+            if (cell) values.add(cell.textContent.trim());
+          });
+          const select = filterRow.children[i]?.querySelector("select");
+          if (select) {
+            [...values].sort().forEach(val => {
+              const option = document.createElement("option");
+              option.value = val;
+              option.textContent = val;
+              select.appendChild(option);
+            });
+          }
+        });
+
+        // Sort and display
+        allData.sort((a, b) => a.statusOrder - b.statusOrder);
+        allData.forEach(obj => tbody.appendChild(obj.row));
+      });
+    }
+
+    // Search with debounce
+    let searchTimeout = null;
+    document.getElementById("searchInput").addEventListener("input", e => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        const val = e.target.value.toLowerCase();
+        document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
+          tr.style.display = tr.dataset.searchable.includes(val) ? "" : "none";
+        });
+      }, 300);
+    });
+
+    // Filter table
+    document.getElementById("filterRow").addEventListener("change", () => {
+      const filters = [...document.querySelectorAll("select.filter")].map(s => s.value);
+      document.querySelectorAll("#parcelTable tbody tr").forEach(tr => {
+        const tds = tr.children;
+        let visible = true;
+        filters.forEach((val, i) => {
+          if (val && !tds[i].textContent.includes(val)) visible = false;
+        });
+        tr.style.display = visible ? "" : "none";
       });
     });
-  });
-
-  document.querySelectorAll(".filter").forEach(drop => {
-    drop.addEventListener("change", () => {
-      applyFilters();
-      sortTableBody();
-    });
-  });
-};
-
-function applyFilters() {
-  const terms = {};
-  document.querySelectorAll(".filter").forEach(sel => {
-    const col = sel.dataset.col;
-    const val = sel.value;
-    if (val) terms[col] = val;
-  });
-
-  document.querySelectorAll("tbody tr").forEach(row => {
-    const cells = row.querySelectorAll("td");
-    let visible = true;
-    for (const key in terms) {
-      const idx = tableColumns.indexOf(key);
-      if (!row.cells[idx] || !row.cells[idx].textContent.includes(terms[key])) visible = false;
-    }
-    row.style.display = visible ? "" : "none";
-  });
-
-  searchFilter();
-  sortTableBody();
-}
-
-let debounceTimer;
-function searchFilter() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    const term = document.getElementById("searchBox").value.toLowerCase();
-    document.querySelectorAll("tbody tr").forEach(row => {
-      if (row.style.display === "none") return;
-      row.style.display = Array.from(row.cells).some(td => td.innerText.toLowerCase().includes(term)) ? "" : "none";
-    });
-    sortTableBody();
-  }, 250);
-}
-
-document.getElementById("searchBox").addEventListener("input", searchFilter);
-
-Promise.all([fetchGeoJSON(), get(ref(db))])
-  .then(([geojson, snapshot]) => renderTable(geojson.features, snapshot.val() || {}));
-</script>
+  </script>
 </body>
 </html>
