@@ -7,11 +7,14 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
+    th { white-space: nowrap; }
+    td:nth-child(4) { width: 120px; } /* Status column */
     input, select, textarea { width: 100%; font-size: 14px; }
     textarea { resize: vertical; overflow-y: hidden; }
     .reply-box { margin-top: 6px; }
+    details summary { cursor: pointer; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -33,7 +36,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const uidParam = new URLSearchParams(window.location.search).get("uid");
-    const currentUser = localStorage.getItem("username") || "Ben";
+    const currentUser = sessionStorage.getItem("username") || "Unknown User";
 
     let config = {}, statusColors = {}, statusOrder = {}, parcels = {}, fbData = {};
     let allRows = [];
@@ -149,16 +152,27 @@
             td.appendChild(btn);
           }
           else if (col === "Note History") {
-            td.innerHTML = notes.map((n, i) => `
-              <div>
-                <strong>${n.user || "?"}:</strong> ${n.text}
-                <br><small>${n.timestamp || ""}</small>
-                <div class="reply-box">
-                  <textarea id="reply-${uid}-${i}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
-                  <button onclick="replyToNote('${uid}', 'reply-${uid}-${i}')">Reply</button>
-                </div>
-              </div><hr>
-            `).join("") || "<em>No notes</em>";
+            if (!notes.length) {
+              td.innerHTML = "<em>No notes</em>";
+            } else {
+              const summary = document.createElement("details");
+              const sum = document.createElement("summary");
+              sum.textContent = `View ${notes.length} note(s)`;
+              summary.appendChild(sum);
+              notes.forEach((n, i) => {
+                const block = document.createElement("div");
+                block.innerHTML = `
+                  <strong>${n.user || "?"}:</strong> ${n.text}<br>
+                  <small>${n.timestamp || ""}</small>
+                  <div class="reply-box">
+                    <textarea id="reply-${uid}-${i}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+                    <button onclick="replyToNote('${uid}', 'reply-${uid}-${i}')">Reply</button>
+                  </div>
+                  <hr>`;
+                summary.appendChild(block);
+              });
+              td.appendChild(summary);
+            }
           }
 
           tr.appendChild(td);
