@@ -9,13 +9,11 @@
     body { font-family: sans-serif; margin: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
-    input, select, textarea { font-size: 14px; }
-    textarea { resize: vertical; width: 100%; }
-    .reply-box { margin-top: 8px; }
+    input, select, textarea { width: 100%; font-size: 14px; }
+    textarea { resize: vertical; overflow-y: hidden; }
+    .reply-box { margin-top: 6px; }
+    .note-toggle { color: blue; text-decoration: underline; cursor: pointer; margin-bottom: 4px; display: inline-block; }
     .note-history { display: none; margin-top: 6px; }
-    .note-history-toggle { color: blue; cursor: pointer; text-decoration: underline; }
-    .status-select { width: 140px; }
-    .note-cell textarea { width: 100%; min-height: 50px; }
   </style>
 </head>
 <body>
@@ -36,8 +34,8 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const currentUser = localStorage.getItem("username") || "Ben";
     const uidParam = new URLSearchParams(window.location.search).get("uid");
+    const currentUser = localStorage.getItem("username") || "Ben";
 
     let config = {}, statusColors = {}, statusOrder = {}, parcels = {}, fbData = {};
     let allRows = [];
@@ -110,7 +108,7 @@
           else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
           else if (col === "Status") {
             const sel = document.createElement("select");
-            sel.className = "status-select";
+            sel.className = "status";
             config.statuses.forEach(s => {
               const opt = document.createElement("option");
               opt.value = s.name;
@@ -122,23 +120,26 @@
           }
           else if (col === "New Note") {
             const ta = document.createElement("textarea");
-            ta.className = "new-note";
+            ta.className = "note";
             ta.placeholder = "Add note...";
-            td.classList.add("note-cell");
+            ta.rows = 2;
+            ta.oninput = () => autoGrow(ta);
             td.appendChild(ta);
           }
           else if (col === "Save") {
             const btn = document.createElement("button");
             btn.textContent = "💾";
             btn.onclick = () => {
-              const status = tr.querySelector("select.status-select").value;
-              const note = tr.querySelector("textarea.new-note").value.trim();
+              const status = tr.querySelector("select.status").value;
+              const note = tr.querySelector("textarea.note").value.trim();
               if (!note) return;
+
               const noteObj = {
                 text: note,
                 user: currentUser,
                 timestamp: new Date().toISOString()
               };
+
               const noteRef = child(ref(db), `${uid}/notes`);
               get(noteRef).then(snapshot => {
                 const existing = snapshot.val() || [];
@@ -150,55 +151,27 @@
             td.appendChild(btn);
           }
           else if (col === "Note History") {
-            const container = document.createElement("div");
-            const toggle = document.createElement("div");
-            toggle.className = "note-history-toggle";
-            toggle.textContent = "Show History";
-            const history = document.createElement("div");
-            history.className = "note-history";
-
-            notes.forEach((n, i) => {
-              const block = document.createElement("div");
-              block.innerHTML = `
+            const historyId = `history-${uid}`;
+            const toggleId = `toggle-${uid}`;
+            const toggle = `<span class="note-toggle" onclick="toggleNoteHistory('${historyId}', '${toggleId}')">View History</span>`;
+            const content = notes.map((n, i) => `
+              <div>
                 <strong>${n.user || "?"}:</strong> ${n.text}
                 <br><small>${n.timestamp || ""}</small>
-              `;
-              const ta = document.createElement("textarea");
-              ta.placeholder = "Reply...";
-              ta.rows = 1;
-              ta.style.width = "100%";
-              const replyBtn = document.createElement("button");
-              replyBtn.textContent = "Reply";
-              replyBtn.onclick = () => {
-                const replyText = ta.value.trim();
-                if (!replyText) return;
-                const noteObj = {
-                  text: "🔁 " + replyText,
-                  user: currentUser,
-                  timestamp: new Date().toISOString()
-                };
-                get(child(ref(db), `${uid}/notes`)).then(snapshot => {
-                  const existing = snapshot.val() || [];
-                  const notes = Array.isArray(existing) ? existing : Object.values(existing);
-                  notes.push(noteObj);
-                  update(ref(db, uid), { notes }).then(() => location.reload());
-                });
-              };
-              block.appendChild(ta);
-              block.appendChild(replyBtn);
-              block.appendChild(document.createElement("hr"));
-              history.appendChild(block);
-            });
+                <div class="reply-box">
+                  <textarea id="reply-${uid}-${i}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+                  <button onclick="replyToNote('${uid}', 'reply-${uid}-${i}')">Reply</button>
+                </div>
+              </div><hr>
+            `).join("") || "<em>No notes</em>";
 
-            toggle.onclick = () => {
-              history.style.display = history.style.display === "none" ? "block" : "none";
-              toggle.textContent = history.style.display === "none" ? "Show History" : "Hide History";
-            };
-
-            history.style.display = "none";
-            container.appendChild(toggle);
-            container.appendChild(history);
-            td.appendChild(container);
+            td.innerHTML = `
+              ${toggle}
+              <div class="note-history" id="${historyId}">
+                ${content}
+                <span class="note-toggle" onclick="toggleNoteHistory('${historyId}', '${toggleId}')">Hide</span>
+              </div>
+            `;
           }
 
           tr.appendChild(td);
@@ -227,6 +200,36 @@
         sel.addEventListener("change", applyFilters);
       });
     }
+
+    window.toggleNoteHistory = (id) => {
+      const div = document.getElementById(id);
+      div.style.display = div.style.display === "none" ? "block" : "none";
+    };
+
+    window.replyToNote = (uid, replyId) => {
+      const textarea = document.getElementById(replyId);
+      const replyText = textarea?.value?.trim();
+      if (!replyText) return;
+
+      const noteObj = {
+        text: "🔁 " + replyText,
+        user: currentUser,
+        timestamp: new Date().toISOString()
+      };
+
+      const noteRef = child(ref(db), `${uid}/notes`);
+      get(noteRef).then(snapshot => {
+        const existing = snapshot.val() || [];
+        const notes = Array.isArray(existing) ? existing : Object.values(existing);
+        notes.push(noteObj);
+        update(ref(db, uid), { notes }).then(() => location.reload());
+      });
+    };
+
+    window.autoGrow = function(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    };
 
     function applyFilters() {
       const terms = {};
