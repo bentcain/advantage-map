@@ -10,13 +10,13 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
     input, select, textarea { width: 100%; font-size: 14px; }
-    textarea { resize: vertical; }
-    .reply-box { margin-top: 8px; }
+    textarea { resize: vertical; overflow-y: hidden; }
+    .reply-box { margin-top: 6px; }
   </style>
 </head>
 <body>
   <h2>Parcel Notes Dashboard</h2>
-  <input type="text" id="searchInput" placeholder="Search." />
+  <input type="text" id="searchInput" placeholder="Search..." />
   <table id="notesTable">
     <thead>
       <tr id="filterRow"></tr>
@@ -119,6 +119,9 @@
           else if (col === "New Note") {
             const ta = document.createElement("textarea");
             ta.className = "note";
+            ta.placeholder = "Add note...";
+            ta.rows = 2;
+            ta.oninput = () => autoGrow(ta);
             td.appendChild(ta);
           }
           else if (col === "Save") {
@@ -127,7 +130,6 @@
             btn.onclick = () => {
               const status = tr.querySelector("select.status").value;
               const note = tr.querySelector("textarea.note").value.trim();
-
               if (!note) return;
 
               const noteObj = {
@@ -141,10 +143,7 @@
                 const existing = snapshot.val() || [];
                 const notes = Array.isArray(existing) ? existing : Object.values(existing);
                 notes.push(noteObj);
-                update(ref(db, uid), { status, notes }).then(() => {
-                  alert("Saved!");
-                  location.reload();
-                });
+                update(ref(db, uid), { status, notes }).then(() => location.reload());
               });
             };
             td.appendChild(btn);
@@ -155,8 +154,8 @@
                 <strong>${n.user || "?"}:</strong> ${n.text}
                 <br><small>${n.timestamp || ""}</small>
                 <div class="reply-box">
-                  <textarea rows="1" data-reply-index="${i}" placeholder="Reply..."></textarea>
-                  <button onclick="replyToNote('${uid}', ${i})">Reply</button>
+                  <textarea id="reply-${uid}-${i}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+                  <button onclick="replyToNote('${uid}', 'reply-${uid}-${i}')">Reply</button>
                 </div>
               </div><hr>
             `).join("") || "<em>No notes</em>";
@@ -204,15 +203,17 @@
       });
     }
 
-    window.replyToNote = (uid, index) => {
-      const textarea = document.querySelector(`textarea[data-reply-index='${index}']`);
+    window.replyToNote = (uid, replyId) => {
+      const textarea = document.getElementById(replyId);
       const replyText = textarea?.value?.trim();
       if (!replyText) return;
+
       const noteObj = {
         text: "🔁 " + replyText,
         user: currentUser,
         timestamp: new Date().toISOString()
       };
+
       const noteRef = child(ref(db), `${uid}/notes`);
       get(noteRef).then(snapshot => {
         const existing = snapshot.val() || [];
@@ -220,6 +221,11 @@
         notes.push(noteObj);
         update(ref(db, uid), { notes }).then(() => location.reload());
       });
+    };
+
+    window.autoGrow = function(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
     };
 
     document.getElementById("searchInput").addEventListener("input", () => {
