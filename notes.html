@@ -7,15 +7,15 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
     input, select, textarea { font-size: 14px; }
     textarea { resize: vertical; width: 100%; }
     .reply-box { margin-top: 8px; }
-    .collapsed { display: none; }
-    .toggle-btn { margin-top: 4px; font-size: 13px; color: blue; cursor: pointer; text-decoration: underline; }
-    .status-col { width: 150px; }
-    .note-col { width: 300px; }
+    .note-history { display: none; margin-top: 6px; }
+    .note-history-toggle { color: blue; cursor: pointer; text-decoration: underline; }
+    .status-select { width: 140px; }
+    .note-cell textarea { width: 100%; min-height: 50px; }
   </style>
 </head>
 <body>
@@ -37,6 +37,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const currentUser = localStorage.getItem("username") || "Ben";
+    const uidParam = new URLSearchParams(window.location.search).get("uid");
 
     let config = {}, statusColors = {}, statusOrder = {}, parcels = {}, fbData = {};
     let allRows = [];
@@ -65,7 +66,10 @@
     }
 
     function buildTable() {
-      const columns = ["uid", "Property", "Parent", "Status", "New Note", "Save", "Note History"];
+      const uids = uidParam ? [uidParam] : Object.keys(parcels);
+      const dynamicCols = config.columns.filter(c => c !== "uid" && c !== "Status");
+      const columns = ["uid", ...dynamicCols.slice(0, 2), "Status", "New Note", "Save", "Note History"];
+
       const headerRow = document.getElementById("headerRow");
       const filterRow = document.getElementById("filterRow");
       const tbody = document.querySelector("#notesTable tbody");
@@ -74,12 +78,7 @@
       tbody.innerHTML = "";
 
       columns.forEach(col => {
-        const th = document.createElement("th");
-        if (col === "Status") th.className = "status-col";
-        if (col === "New Note") th.className = "note-col";
-        th.textContent = col;
-        headerRow.appendChild(th);
-
+        headerRow.innerHTML += `<th>${col}</th>`;
         const fth = document.createElement("th");
         if (!["New Note", "Save", "Note History"].includes(col)) {
           const sel = document.createElement("select");
@@ -91,26 +90,27 @@
         filterRow.appendChild(fth);
       });
 
-      const rows = [];
+      const rowData = [];
 
-      Object.keys(parcels).forEach(uid => {
-        const props = parcels[uid];
+      uids.forEach(uid => {
+        const parcel = parcels[uid] || {};
         const fb = fbData[uid] || {};
+        const status = fb.status || parcel.Status || "New";
         const notes = Array.isArray(fb.notes) ? fb.notes : Object.values(fb.notes || {});
-        const status = fb.status || props.Status || "New";
-
         const tr = document.createElement("tr");
         tr.style.backgroundColor = statusColors[status] || "";
-        tr.dataset.searchable = `${uid} ${props.Property || ""} ${props.Parent || ""} ${status} ${notes.map(n => n.text).join(" ")}`.toLowerCase();
 
-        const cells = {
-          uid: uid,
-          Property: props.Property || "",
-          Parent: props.Parent || "",
-          Status: (() => {
+        const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${notes.map(n => n.text).join(" ")}`.toLowerCase();
+        tr.dataset.searchable = searchable;
+
+        columns.forEach(col => {
+          const td = document.createElement("td");
+
+          if (col === "uid") td.textContent = uid;
+          else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
+          else if (col === "Status") {
             const sel = document.createElement("select");
-            sel.className = "status";
-            sel.style.width = "100%";
+            sel.className = "status-select";
             config.statuses.forEach(s => {
               const opt = document.createElement("option");
               opt.value = s.name;
@@ -118,23 +118,22 @@
               if (s.name === status) opt.selected = true;
               sel.appendChild(opt);
             });
-            return sel;
-          })(),
-          "New Note": (() => {
+            td.appendChild(sel);
+          }
+          else if (col === "New Note") {
             const ta = document.createElement("textarea");
-            ta.rows = 2;
+            ta.className = "new-note";
             ta.placeholder = "Add note...";
-            ta.className = "note";
-            return ta;
-          })(),
-          Save: (() => {
+            td.classList.add("note-cell");
+            td.appendChild(ta);
+          }
+          else if (col === "Save") {
             const btn = document.createElement("button");
             btn.textContent = "💾";
             btn.onclick = () => {
-              const note = tr.querySelector(".note").value.trim();
-              const newStatus = tr.querySelector("select.status").value;
+              const status = tr.querySelector("select.status-select").value;
+              const note = tr.querySelector("textarea.new-note").value.trim();
               if (!note) return;
-
               const noteObj = {
                 text: note,
                 user: currentUser,
@@ -145,51 +144,77 @@
                 const existing = snapshot.val() || [];
                 const notes = Array.isArray(existing) ? existing : Object.values(existing);
                 notes.push(noteObj);
-                update(ref(db, uid), { status: newStatus, notes }).then(() => location.reload());
+                update(ref(db, uid), { status, notes }).then(() => location.reload());
               });
             };
-            return btn;
-          })(),
-          "Note History": (() => {
-            const wrapper = document.createElement("div");
-            wrapper.innerHTML = `
-              <div class="collapsed note-history">
-                ${notes.map((n, i) => `
-                  <div>
-                    <strong>${n.user || "?"}:</strong> ${n.text}<br>
-                    <small>${n.timestamp || ""}</small>
-                    <div class="reply-box">
-                      <textarea rows="1" placeholder="Reply..." data-reply-index="${i}" style="width:100%"></textarea>
-                      <button onclick="replyToNote('${uid}', ${i})">Reply</button>
-                    </div>
-                  </div><hr>`).join("")}
-              </div>
-              <div class="toggle-btn" onclick="toggleHistory(this)">Show History</div>
-            `;
-            return wrapper;
-          })()
-        };
-
-        columns.forEach(col => {
-          const td = document.createElement("td");
-          if (typeof cells[col] === "string") {
-            td.textContent = cells[col];
-          } else {
-            td.appendChild(cells[col]);
+            td.appendChild(btn);
           }
+          else if (col === "Note History") {
+            const container = document.createElement("div");
+            const toggle = document.createElement("div");
+            toggle.className = "note-history-toggle";
+            toggle.textContent = "Show History";
+            const history = document.createElement("div");
+            history.className = "note-history";
+
+            notes.forEach((n, i) => {
+              const block = document.createElement("div");
+              block.innerHTML = `
+                <strong>${n.user || "?"}:</strong> ${n.text}
+                <br><small>${n.timestamp || ""}</small>
+              `;
+              const ta = document.createElement("textarea");
+              ta.placeholder = "Reply...";
+              ta.rows = 1;
+              ta.style.width = "100%";
+              const replyBtn = document.createElement("button");
+              replyBtn.textContent = "Reply";
+              replyBtn.onclick = () => {
+                const replyText = ta.value.trim();
+                if (!replyText) return;
+                const noteObj = {
+                  text: "🔁 " + replyText,
+                  user: currentUser,
+                  timestamp: new Date().toISOString()
+                };
+                get(child(ref(db), `${uid}/notes`)).then(snapshot => {
+                  const existing = snapshot.val() || [];
+                  const notes = Array.isArray(existing) ? existing : Object.values(existing);
+                  notes.push(noteObj);
+                  update(ref(db, uid), { notes }).then(() => location.reload());
+                });
+              };
+              block.appendChild(ta);
+              block.appendChild(replyBtn);
+              block.appendChild(document.createElement("hr"));
+              history.appendChild(block);
+            });
+
+            toggle.onclick = () => {
+              history.style.display = history.style.display === "none" ? "block" : "none";
+              toggle.textContent = history.style.display === "none" ? "Show History" : "Hide History";
+            };
+
+            history.style.display = "none";
+            container.appendChild(toggle);
+            container.appendChild(history);
+            td.appendChild(container);
+          }
+
           tr.appendChild(td);
         });
 
-        rows.push({ tr, order: statusOrder[status.toLowerCase()] || 99 });
+        const order = statusOrder[status.toLowerCase()] || 99;
+        rowData.push({ tr, order });
       });
 
-      rows.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
+      rowData.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
 
       document.querySelectorAll("select.filter").forEach(sel => {
         const col = sel.dataset.col;
         const idx = columns.indexOf(col);
         const values = new Set();
-        rows.forEach(row => {
+        rowData.forEach(row => {
           const val = row.tr.cells[idx]?.textContent;
           if (val) values.add(val);
         });
@@ -217,30 +242,6 @@
         tr.style.display = visible ? "" : "none";
       });
     }
-
-    window.replyToNote = (uid, index) => {
-      const textarea = document.querySelector(`textarea[data-reply-index='${index}']`);
-      const reply = textarea?.value.trim();
-      if (!reply) return;
-      const noteRef = child(ref(db), `${uid}/notes`);
-      get(noteRef).then(snapshot => {
-        const existing = snapshot.val() || [];
-        const notes = Array.isArray(existing) ? existing : Object.values(existing);
-        notes.push({
-          text: "🔁 " + reply,
-          user: currentUser,
-          timestamp: new Date().toISOString()
-        });
-        update(ref(db, uid), { notes }).then(() => location.reload());
-      });
-    };
-
-    window.toggleHistory = (el) => {
-      const block = el.previousElementSibling;
-      const show = block.classList.contains("collapsed");
-      block.classList.toggle("collapsed");
-      el.textContent = show ? "Hide History" : "Show History";
-    };
 
     document.getElementById("searchInput").addEventListener("input", () => {
       const term = document.getElementById("searchInput").value.toLowerCase();
