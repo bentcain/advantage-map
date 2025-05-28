@@ -7,25 +7,78 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
-    th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      vertical-align: top;
+      box-sizing: border-box;
+    }
     th { white-space: nowrap; }
-    input, select, textarea { width: 100%; font-size: 14px; }
-    textarea { resize: vertical; overflow-y: hidden; }
+    input, select, textarea {
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    textarea {
+      resize: vertical;
+      overflow-y: hidden;
+      max-width: 100%;
+    }
     .reply-box { margin-top: 6px; }
     details summary { cursor: pointer; font-weight: bold; }
 
-    /* Updated column widths and button styling */
-    td[data-col="Status"] { width: 120px; }
-    td[data-col="Save"] { width: 15px; padding: 0; }
+    td[data-col="uid"] {
+      width: 100px;
+      min-width: 100px;
+      max-width: 100px;
+    }
+    td[data-col="Property"],
+    td[data-col="Parent"] {
+      width: 170px;
+      min-width: 170px;
+      max-width: 170px;
+    }
+    td[data-col="Acres"] {
+      width: 113px;
+      min-width: 113px;
+      max-width: 113px;
+    }
+    td[data-col="Status"] {
+      width: 120px;
+      min-width: 120px;
+      max-width: 120px;
+    }
+    td[data-col="Save"] {
+      width: 15px !important;
+      min-width: 15px;
+      max-width: 15px;
+      padding: 0;
+      overflow: hidden;
+    }
     td[data-col="Save"] button {
       width: 100%;
       padding: 0;
       text-align: center;
       font-size: 16px;
+      line-height: 1;
+      overflow: hidden;
     }
-    td[data-col="New Note"] { width: 325px; min-width: 325px; }
-    td[data-col="Note History"] { width: 400px; min-width: 400px; }
+    td[data-col="New Note"] {
+      width: 350px;
+      min-width: 350px;
+      max-width: 350px;
+    }
+    td[data-col="Note History"] {
+      min-width: 500px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
   </style>
 </head>
 <body>
@@ -38,7 +91,6 @@
     </thead>
     <tbody></tbody>
   </table>
-
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
     import { getDatabase, ref, child, get, update } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
@@ -78,7 +130,7 @@
     function buildTable() {
       const uids = uidParam ? [uidParam] : Object.keys(parcels);
       const dynamicCols = config.columns.filter(c => c !== "uid" && c !== "Status");
-      const columns = ["uid", ...dynamicCols.slice(0, 2), "Status", "New Note", "Save", "Note History"];
+      const columns = ["uid", ...dynamicCols.slice(0, 3), "Status", "New Note", "Save", "Note History"];
 
       const headerRow = document.getElementById("headerRow");
       const filterRow = document.getElementById("filterRow");
