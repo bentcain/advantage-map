@@ -45,234 +45,234 @@
   </style>
 </head>
 <body>
-<h2>Parcel Notes Dashboard</h2>
-<input type="text" id="searchInput" placeholder="Search...">
-<table id="notesTable">
-  <thead>
-    <tr id="headerRow"></tr>
-    <tr id="filterRow"></tr>
-  </thead>
-  <tbody></tbody>
-</table>
+  <h2>Parcel Notes Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search...">
+  <table id="notesTable">
+    <thead>
+      <tr id="headerRow"></tr>
+      <tr id="filterRow"></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-  import { getDatabase, ref, child, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
-  import { firebaseConfig } from './firebase-config.js';
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
+    import { getDatabase, ref, child, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+    import { firebaseConfig } from './firebase-config.js';
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const uidParam = new URLSearchParams(window.location.search).get("uid");
-  const currentUser = sessionStorage.getItem("username") || "Unknown User";
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const uidParam = new URLSearchParams(window.location.search).get("uid");
+    const currentUser = sessionStorage.getItem("username") || "Unknown User";
 
-  const config = await fetch("project_config.json").then(r => r.json());
-  const statusColors = {};
-  const statusOrder = {};
-  config.statuses.forEach(s => {
-    statusColors[s.name] = s.color;
-    statusOrder[s.name.toLowerCase()] = s.order;
-  });
+    const config = await fetch("project_config.json").then(r => r.json());
+    const statusColors = {};
+    const statusOrder = {};
+    config.statuses.forEach(s => {
+      statusColors[s.name] = s.color;
+      statusOrder[s.name.toLowerCase()] = s.order;
+    });
 
-  const geoFile = await fetch("geojson_filename.txt").then(r => r.text());
-  const geojson = await fetch(geoFile.trim()).then(r => r.json());
+    const geoFile = await fetch("geojson_filename.txt").then(r => r.text());
+    const geojson = await fetch(geoFile.trim()).then(r => r.json());
 
-  const parcels = {};
-  geojson.features.forEach(f => {
-    const uid = f.properties.uid;
-    if (uid) parcels[uid] = f.properties;
-  });
+    const parcels = {};
+    geojson.features.forEach(f => {
+      const uid = f.properties.uid;
+      if (uid) parcels[uid] = f.properties;
+    });
 
-  const fbSnap = await get(ref(db));
-  const fbData = fbSnap.val() || {};
-  const uids = uidParam ? [uidParam] : Object.keys(parcels);
+    const fbSnap = await get(ref(db));
+    const fbData = fbSnap.val() || {};
+    const uids = uidParam ? [uidParam] : Object.keys(parcels);
 
-  const dynamicCols = config.columns.filter(c => c !== "uid" && c !== "Status");
-  const columns = ["uid", ...dynamicCols.slice(0, 3), "Status", "New Note", "Save", "Note History"];
-  const tbody = document.querySelector("tbody");
-  const headerRow = document.getElementById("headerRow");
-  const filterRow = document.getElementById("filterRow");
+    const dynamicCols = config.columns.filter(c => c !== "uid" && c !== "Status");
+    const columns = ["uid", ...dynamicCols.slice(0, 3), "Status", "New Note", "Save", "Note History"];
+    const tbody = document.querySelector("tbody");
+    const headerRow = document.getElementById("headerRow");
+    const filterRow = document.getElementById("filterRow");
 
-  headerRow.innerHTML = "";
-  filterRow.innerHTML = "";
-  columns.forEach(col => {
-    const th = document.createElement("th");
-    th.textContent = col;
-    th.dataset.col = col;
-    headerRow.appendChild(th);
-
-    const fth = document.createElement("th");
-    if (!["New Note", "Save", "Note History"].includes(col)) {
-      const sel = document.createElement("select");
-      sel.innerHTML = `<option value="">All</option>`;
-      sel.dataset.col = col;
-      sel.className = "filter";
-      fth.appendChild(sel);
-    }
-    filterRow.appendChild(fth);
-  });
-
-  const rowData = [];
-
-  for (const uid of uids) {
-    const parcel = parcels[uid] || {};
-    const fb = fbData[uid] || {};
-    const notes = fb.notes || {};
-    const status = fb.status || parcel.Status || "New";
-
-    const tr = document.createElement("tr");
-    tr.style.backgroundColor = statusColors[status] || "";
-    const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status}`.toLowerCase();
-    tr.dataset.searchable = searchable;
-
+    headerRow.innerHTML = "";
+    filterRow.innerHTML = "";
     columns.forEach(col => {
-      const td = document.createElement("td");
-      td.dataset.col = col;
+      const th = document.createElement("th");
+      th.textContent = col;
+      th.dataset.col = col;
+      headerRow.appendChild(th);
 
-      if (col === "uid") td.textContent = uid;
-      else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
-      else if (col === "Status") {
+      const fth = document.createElement("th");
+      if (!["New Note", "Save", "Note History"].includes(col)) {
         const sel = document.createElement("select");
-        sel.className = "status";
-        config.statuses.forEach(s => {
-          const opt = document.createElement("option");
-          opt.value = s.name;
-          opt.textContent = s.name;
-          if (s.name === status) opt.selected = true;
-          sel.appendChild(opt);
-        });
-        td.appendChild(sel);
+        sel.innerHTML = `<option value="">All</option>`;
+        sel.dataset.col = col;
+        sel.className = "filter";
+        fth.appendChild(sel);
       }
-      else if (col === "New Note") {
-        const ta = document.createElement("textarea");
-        ta.className = "note";
-        ta.placeholder = "Add note...";
-        ta.rows = 2;
-        ta.oninput = () => autoGrow(ta);
-        td.appendChild(ta);
-      }
-      else if (col === "Save") {
-        const btn = document.createElement("button");
-        btn.textContent = "💾";
-        btn.onclick = () => {
-          const status = tr.querySelector("select.status").value;
-          const note = tr.querySelector("textarea.note").value.trim();
-          if (!note) return;
-          const noteId = "note_" + Math.random().toString(36).slice(2, 9);
-          const noteObj = {
-            text: note,
-            user: currentUser,
-            timestamp: new Date().toISOString(),
-            replies: []
-          };
-          const updates = {
-            status: status,
-            [`notes/${noteId}`]: noteObj
-          };
-          update(ref(db, uid), updates).then(() => location.reload());
-        };
-        td.appendChild(btn);
-      }
-      else if (col === "Note History") {
-        const allNotes = Object.entries(notes);
-        if (!allNotes.length) {
-          td.innerHTML = "<em>No notes</em>";
-        } else {
-          const details = document.createElement("details");
-          const summary = document.createElement("summary");
-          summary.textContent = `View ${allNotes.length} note(s)`;
-          details.appendChild(summary);
-          allNotes.forEach(([noteId, note]) => {
-            const div = document.createElement("div");
-            div.innerHTML = `
-              <strong>${note.user || "?"}</strong>: ${note.text}<br>
-              <small>${note.timestamp || ""}</small>
-            `;
-            if (note.replies && Array.isArray(note.replies)) {
-              note.replies.forEach(reply => {
-                const r = document.createElement("div");
-                r.className = "reply";
-                r.innerHTML = `<strong>${reply.user}</strong>: ${reply.text}<br><small>${reply.timestamp}</small>`;
-                div.appendChild(r);
-              });
-            }
-            const replyBox = document.createElement("div");
-            replyBox.className = "reply-box";
-            replyBox.innerHTML = `
-              <textarea id="reply-${uid}-${noteId}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
-              <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
-            `;
-            div.appendChild(replyBox);
-            details.appendChild(div);
+      filterRow.appendChild(fth);
+    });
+
+    const rowData = [];
+
+    for (const uid of uids) {
+      const parcel = parcels[uid] || {};
+      const fb = fbData[uid] || {};
+      const notes = fb.notes || {};
+      const status = fb.status || parcel.Status || "New";
+
+      const tr = document.createElement("tr");
+      tr.style.backgroundColor = statusColors[status] || "";
+      const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status}`.toLowerCase();
+      tr.dataset.searchable = searchable;
+
+      columns.forEach(col => {
+        const td = document.createElement("td");
+        td.dataset.col = col;
+
+        if (col === "uid") td.textContent = uid;
+        else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
+        else if (col === "Status") {
+          const sel = document.createElement("select");
+          sel.className = "status";
+          config.statuses.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.name;
+            opt.textContent = s.name;
+            if (s.name === status) opt.selected = true;
+            sel.appendChild(opt);
           });
-          td.appendChild(details);
+          td.appendChild(sel);
         }
-      }
+        else if (col === "New Note") {
+          const ta = document.createElement("textarea");
+          ta.className = "note";
+          ta.placeholder = "Add note...";
+          ta.rows = 2;
+          ta.oninput = () => autoGrow(ta);
+          td.appendChild(ta);
+        }
+        else if (col === "Save") {
+          const btn = document.createElement("button");
+          btn.textContent = "💾";
+          btn.onclick = () => {
+            const status = tr.querySelector("select.status").value;
+            const note = tr.querySelector("textarea.note").value.trim();
+            if (!note) return;
+            const noteId = "note_" + Math.random().toString(36).slice(2, 9);
+            const noteObj = {
+              text: note,
+              user: currentUser,
+              timestamp: new Date().toISOString(),
+              replies: []
+            };
+            const updates = {
+              status: status,
+              [`notes/${noteId}`]: noteObj
+            };
+            update(ref(db, uid), updates).then(() => location.reload());
+          };
+          td.appendChild(btn);
+        }
+        else if (col === "Note History") {
+          const allNotes = Object.entries(notes);
+          if (!allNotes.length) {
+            td.innerHTML = "<em>No notes</em>";
+          } else {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = `View ${allNotes.length} note(s)`;
+            details.appendChild(summary);
+            allNotes.forEach(([noteId, note]) => {
+              const div = document.createElement("div");
+              div.innerHTML = `
+                <strong>${note.user || "?"}</strong>: ${note.text}<br>
+                <small>${note.timestamp || ""}</small>
+              `;
+              if (note.replies && Array.isArray(note.replies)) {
+                note.replies.forEach(reply => {
+                  const r = document.createElement("div");
+                  r.className = "reply";
+                  r.innerHTML = `<strong>${reply.user}</strong>: ${reply.text}<br><small>${reply.timestamp}</small>`;
+                  div.appendChild(r);
+                });
+              }
+              const replyBox = document.createElement("div");
+              replyBox.className = "reply-box";
+              replyBox.innerHTML = `
+                <textarea id="reply-${uid}-${noteId}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+                <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
+              `;
+              div.appendChild(replyBox);
+              details.appendChild(div);
+            });
+            td.appendChild(details);
+          }
+        }
 
-      tr.appendChild(td);
-    });
-
-    const order = statusOrder[status.toLowerCase()] || 99;
-    rowData.push({ tr, order });
-  }
-
-  rowData.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
-
-  document.querySelectorAll("select.filter").forEach(sel => {
-    const col = sel.dataset.col;
-    const idx = columns.indexOf(col);
-    const values = new Set();
-    rowData.forEach(row => {
-      const val = row.tr.cells[idx]?.textContent;
-      if (val) values.add(val);
-    });
-    [...values].sort().forEach(v => {
-      const opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      sel.appendChild(opt);
-    });
-    sel.addEventListener("change", () => {
-      const terms = {};
-      document.querySelectorAll("select.filter").forEach(f => {
-        if (f.value) terms[f.dataset.col] = f.value;
+        tr.appendChild(td);
       });
-      document.querySelectorAll("tbody tr").forEach(tr => {
-        const visible = Object.entries(terms).every(([col, val]) => {
-          const cell = Array.from(tr.children).find(td => td.dataset.col === col);
-          return cell?.textContent.includes(val);
+
+      const order = statusOrder[status.toLowerCase()] || 99;
+      rowData.push({ tr, order });
+    }
+
+    rowData.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
+
+    document.querySelectorAll("select.filter").forEach(sel => {
+      const col = sel.dataset.col;
+      const idx = columns.indexOf(col);
+      const values = new Set();
+      rowData.forEach(row => {
+        const val = row.tr.cells[idx]?.textContent;
+        if (val) values.add(val);
+      });
+      [...values].sort().forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", () => {
+        const terms = {};
+        document.querySelectorAll("select.filter").forEach(f => {
+          if (f.value) terms[f.dataset.col] = f.value;
         });
-        tr.style.display = visible ? "" : "none";
+        document.querySelectorAll("tbody tr").forEach(tr => {
+          const visible = Object.entries(terms).every(([col, val]) => {
+            const cell = Array.from(tr.children).find(td => td.dataset.col === col);
+            return cell?.textContent.includes(val);
+          });
+          tr.style.display = visible ? "" : "none";
+        });
       });
     });
-  });
 
-  document.getElementById("searchInput").addEventListener("input", () => {
-    const term = document.getElementById("searchInput").value.toLowerCase();
-    document.querySelectorAll("tbody tr").forEach(tr => {
-      tr.style.display = tr.dataset.searchable.includes(term) ? "" : "none";
-    });
-  });
-
-  window.replyToNote = (uid, noteId) => {
-    const ta = document.getElementById(`reply-${uid}-${noteId}`);
-    const text = ta?.value?.trim();
-    if (!text) return;
-    const ref = child(ref(db), `${uid}/notes/${noteId}/replies`);
-    get(ref).then(snap => {
-      const replies = snap.val() || [];
-      replies.push({
-        text: "🔁 " + text,
-        user: currentUser,
-        timestamp: new Date().toISOString()
+    document.getElementById("searchInput").addEventListener("input", () => {
+      const term = document.getElementById("searchInput").value.toLowerCase();
+      document.querySelectorAll("tbody tr").forEach(tr => {
+        tr.style.display = tr.dataset.searchable.includes(term) ? "" : "none";
       });
-      set(ref, replies).then(() => location.reload());
     });
-  };
 
-  window.autoGrow = function(textarea) {
-    textarea.style.height = "auto";
-    textarea.style.height = textarea.scrollHeight + "px";
-  };
-</script>
+    window.replyToNote = (uid, noteId) => {
+      const ta = document.getElementById(`reply-${uid}-${noteId}`);
+      const text = ta?.value?.trim();
+      if (!text) return;
+      const replyRef = ref(db, `${uid}/notes/${noteId}/replies`);
+      get(replyRef).then(snap => {
+        const replies = snap.val() || [];
+        replies.push({
+          text: "🔁 " + text,
+          user: currentUser,
+          timestamp: new Date().toISOString()
+        });
+        set(replyRef, replies).then(() => location.reload());
+      });
+    };
+
+    window.autoGrow = function(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = textarea.scrollHeight + "px";
+    };
+  </script>
 </body>
 </html>
