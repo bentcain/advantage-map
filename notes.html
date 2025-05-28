@@ -10,11 +10,14 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
     th { white-space: nowrap; }
-    td:nth-child(4) { width: 120px; } /* Status column */
     input, select, textarea { width: 100%; font-size: 14px; }
     textarea { resize: vertical; overflow-y: hidden; }
     .reply-box { margin-top: 6px; }
     details summary { cursor: pointer; font-weight: bold; }
+    td[data-col="Status"] { width: 120px; }
+    td[data-col="Save"] { width: 60px; }
+    td[data-col="New Note"] { width: 280px; }
+    td[data-col="Note History"] { width: 400px; }
   </style>
 </head>
 <body>
@@ -77,7 +80,11 @@
       tbody.innerHTML = "";
 
       columns.forEach(col => {
-        headerRow.innerHTML += `<th>${col}</th>`;
+        const th = document.createElement("th");
+        th.textContent = col;
+        th.dataset.col = col;
+        headerRow.appendChild(th);
+
         const fth = document.createElement("th");
         if (!["New Note", "Save", "Note History"].includes(col)) {
           const sel = document.createElement("select");
@@ -104,6 +111,7 @@
 
         columns.forEach(col => {
           const td = document.createElement("td");
+          td.dataset.col = col;
 
           if (col === "uid") td.textContent = uid;
           else if (dynamicCols.includes(col)) td.textContent = parcel[col] || "";
@@ -210,8 +218,8 @@
 
       document.querySelectorAll("tbody tr").forEach(tr => {
         const visible = Object.entries(terms).every(([col, val]) => {
-          const idx = [...tr.children].findIndex(td => td.parentElement.children[idx]?.textContent === col);
-          return tr.cells[idx]?.textContent.includes(val);
+          const cell = Array.from(tr.children).find(td => td.dataset.col === col);
+          return cell?.textContent.includes(val);
         });
         tr.style.display = visible ? "" : "none";
       });
