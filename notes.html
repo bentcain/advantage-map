@@ -12,8 +12,6 @@
     input, select, textarea { width: 100%; font-size: 14px; }
     textarea { resize: vertical; overflow-y: hidden; }
     .reply-box { margin-top: 6px; }
-    .note-toggle { color: blue; text-decoration: underline; cursor: pointer; margin-bottom: 4px; display: inline-block; }
-    .note-history { display: none; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -151,10 +149,7 @@
             td.appendChild(btn);
           }
           else if (col === "Note History") {
-            const historyId = `history-${uid}`;
-            const toggleId = `toggle-${uid}`;
-            const toggle = `<span class="note-toggle" onclick="toggleNoteHistory('${historyId}', '${toggleId}')">View History</span>`;
-            const content = notes.map((n, i) => `
+            td.innerHTML = notes.map((n, i) => `
               <div>
                 <strong>${n.user || "?"}:</strong> ${n.text}
                 <br><small>${n.timestamp || ""}</small>
@@ -164,14 +159,6 @@
                 </div>
               </div><hr>
             `).join("") || "<em>No notes</em>";
-
-            td.innerHTML = `
-              ${toggle}
-              <div class="note-history" id="${historyId}">
-                ${content}
-                <span class="note-toggle" onclick="toggleNoteHistory('${historyId}', '${toggleId}')">Hide</span>
-              </div>
-            `;
           }
 
           tr.appendChild(td);
@@ -201,10 +188,20 @@
       });
     }
 
-    window.toggleNoteHistory = (id) => {
-      const div = document.getElementById(id);
-      div.style.display = div.style.display === "none" ? "block" : "none";
-    };
+    function applyFilters() {
+      const terms = {};
+      document.querySelectorAll("select.filter").forEach(sel => {
+        if (sel.value) terms[sel.dataset.col] = sel.value;
+      });
+
+      document.querySelectorAll("tbody tr").forEach(tr => {
+        const visible = Object.entries(terms).every(([col, val]) => {
+          const idx = [...tr.children].findIndex(td => td.parentElement.children[idx]?.textContent === col);
+          return tr.cells[idx]?.textContent.includes(val);
+        });
+        tr.style.display = visible ? "" : "none";
+      });
+    }
 
     window.replyToNote = (uid, replyId) => {
       const textarea = document.getElementById(replyId);
@@ -230,21 +227,6 @@
       textarea.style.height = "auto";
       textarea.style.height = textarea.scrollHeight + "px";
     };
-
-    function applyFilters() {
-      const terms = {};
-      document.querySelectorAll("select.filter").forEach(sel => {
-        if (sel.value) terms[sel.dataset.col] = sel.value;
-      });
-
-      document.querySelectorAll("tbody tr").forEach(tr => {
-        const visible = Object.entries(terms).every(([col, val]) => {
-          const idx = [...tr.children].findIndex(td => td.parentElement.children[idx]?.textContent === col);
-          return tr.cells[idx]?.textContent.includes(val);
-        });
-        tr.style.display = visible ? "" : "none";
-      });
-    }
 
     document.getElementById("searchInput").addEventListener("input", () => {
       const term = document.getElementById("searchInput").value.toLowerCase();
