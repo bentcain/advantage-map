@@ -20,7 +20,7 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
-    #master-link, #notes-link, #requests-link {
+    #master-link, #notes-link {
       position: absolute;
       left: 180px;
       background: white;
@@ -32,7 +32,6 @@
     }
     #master-link { bottom: 80px; }
     #notes-link { bottom: 45px; }
-    #requests-link { bottom: 10px; }
     #labelToggleContainer {
       position: absolute;
       top: 15px;
@@ -79,7 +78,6 @@
 </div>
 <a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
 <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
-<a id="requests-link" href="requests.html" target="_blank">📮 View Request Dashboard</a>
 
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
@@ -139,9 +137,6 @@ const updateAcreageDisplay = () => {
 window.saveNote = async (uid) => {
   const note = document.getElementById(`note-${uid}`).value.trim();
   const status = document.getElementById(`status-${uid}`).value;
-  const isRequest = document.getElementById(`request-${uid}`).checked;
-  const assignee = document.getElementById(`assign-${uid}`).value.trim();
-
   if (!note && !status) return;
 
   const snap = await get(child(ref(db), `${uid}/notes`));
@@ -152,19 +147,6 @@ window.saveNote = async (uid) => {
   }
 
   const updates = { status, notes };
-  if (isRequest) {
-    const requestId = `${Date.now()}_Ben`;
-    const req = {
-      text: note,
-      createdBy: "Ben",
-      assignedTo: assignee || "Unassigned",
-      status: "open",
-      createdAt: new Date().toISOString(),
-      comments: []
-    };
-    updates[`requests/${uid}/${requestId}`] = req;
-  }
-
   update(ref(db, uid), updates).then(() => {
     updateParcelStyleByUID(uid, status);
     alert("Saved!");
@@ -230,14 +212,12 @@ const geoLayer = L.geoJSON(geojson, {
       ).join("");
 
       let popup = "<table>";
-      config.columns.slice(0, 2).forEach(col => {
+      config.columns.slice(0, 8).forEach(col => {
         popup += `<tr><td><strong>${col}</strong></td><td>${props[col] || ""}</td></tr>`;
       });
 
       popup += `<tr><td><strong>Status</strong></td><td><select id="status-${uid}">${statusOptions}</select></td></tr>`;
       popup += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3"></textarea></td></tr>`;
-      popup += `<tr><td colspan="2"><input type="checkbox" id="request-${uid}"> Mark as Request<br>
-                <input id="assign-${uid}" placeholder="Assign To..." style="width:100%;margin-top:4px;display:block;"></td></tr>`;
       popup += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
 
       if (notes.length > 0) {
@@ -246,6 +226,7 @@ const geoLayer = L.geoJSON(geojson, {
       }
 
       popup += `<tr><td colspan="2"><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></td></tr>`;
+      popup += `<tr><td colspan="2"><a href="master.html?uid=${uid}" target="_blank">🗂️ Open in Master</a></td></tr>`;
       popup += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
       popup += "</table>";
 
