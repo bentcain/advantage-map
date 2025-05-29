@@ -173,6 +173,9 @@ await loadConfig();
 const geoFile = await fetch("geojson_filename.txt").then(r => r.text());
 const geojson = await fetch(geoFile.trim()).then(r => r.json());
 
+const urlParams = new URLSearchParams(window.location.search);
+const targetUID = urlParams.get("uid");
+
 const geoLayer = L.geoJSON(geojson, {
   style: f => ({
     color: "#444",
@@ -241,7 +244,18 @@ const geoLayer = L.geoJSON(geojson, {
   }
 }).addTo(map);
 
-map.fitBounds(geoLayer.getBounds());
+// ✅ Only fit to bounds if not zooming to a specific parcel
+if (!targetUID) {
+  map.fitBounds(geoLayer.getBounds());
+} else {
+  geoLayer.eachLayer(layer => {
+    if (layer.feature?.properties?.uid === targetUID) {
+      map.setView(layer.getBounds().getCenter(), 17);
+      layer.openPopup();
+    }
+  });
+}
+
 updateLegend();
 if (document.getElementById("labelToggle").checked) labelLayerGroup.addTo(map);
 
@@ -261,18 +275,6 @@ document.getElementById("clearSelected").onclick = () => {
   });
   updateAcreageDisplay();
 };
-
-// ✅ Auto-zoom to parcel on load if UID provided in URL
-const urlParams = new URLSearchParams(window.location.search);
-const targetUID = urlParams.get("uid");
-if (targetUID) {
-  geoLayer.eachLayer(layer => {
-    if (layer.feature?.properties?.uid === targetUID) {
-      map.setView(layer.getBounds().getCenter(), 17);
-      layer.openPopup();
-    }
-  });
-}
 </script>
 </body>
 </html>
