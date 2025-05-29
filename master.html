@@ -1,4 +1,3 @@
-<!-- version: master.html - Phase 5 - Config + Firebase merge -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,10 +12,12 @@
     tr:hover { background-color: #f1f1f1; }
     input[type="text"] { padding: 6px; width: 300px; margin-bottom: 10px; }
     select, textarea { width: 100%; font-size: 14px; }
+    #summary { margin-bottom: 0.5rem; font-weight: bold; }
   </style>
 </head>
 <body>
 <h2>📋 Master Parcel Dashboard</h2>
+<div id="summary"></div>
 <input type="text" id="searchBox" placeholder="Search within filtered rows..." />
 <div id="tableContainer">Loading...</div>
 
@@ -30,7 +31,7 @@ const db = getDatabase(app);
 
 const geojsonFile = "geojson_filename.txt";
 const configFile = "project_config.json";
-let allRows = [], tableColumns = [], statusOrder = {}, statusColors = {};
+let allRows = [], tableColumns = [], statusOrder = {}, statusColors = {}, lastSearch = "";
 
 const loadConfig = async () => {
   const config = await fetch(configFile).then(r => r.json());
@@ -45,6 +46,17 @@ const fetchGeoJSON = async () => {
   const filename = await fetch(geojsonFile).then(res => res.text());
   return fetch(filename.trim()).then(res => res.json());
 };
+
+function updateSummary() {
+  const rows = Array.from(document.querySelectorAll("tbody tr")).filter(r => r.style.display !== "none");
+  const total = rows.length;
+  const interested = rows.filter(r => {
+    const status = r.querySelector("select.status")?.value?.toLowerCase();
+    return status && statusOrder[status] <= 5;
+  }).length;
+  const pct = total ? Math.round((interested / total) * 100) : 0;
+  document.getElementById("summary").textContent = `🚀 ${pct}% Interested (${interested} of ${total} visible parcels)`;
+}
 
 function sortTableBody() {
   const tbody = document.querySelector("tbody");
@@ -77,6 +89,7 @@ function applyFilters() {
 
   searchFilter();
   sortTableBody();
+  updateSummary();
 }
 
 let debounceTimer;
@@ -84,11 +97,13 @@ function searchFilter() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     const term = document.getElementById("searchBox").value.toLowerCase();
+    lastSearch = term;
     document.querySelectorAll("tbody tr").forEach(row => {
       if (row.style.display === "none") return;
       row.style.display = Array.from(row.cells).some(td => td.innerText.toLowerCase().includes(term)) ? "" : "none";
     });
     sortTableBody();
+    updateSummary();
   }, 250);
 }
 
@@ -96,10 +111,10 @@ document.getElementById("searchBox").addEventListener("input", searchFilter);
 
 function renderTable(uids, parcels, fbData, config) {
   const container = document.getElementById("tableContainer");
-  tableColumns = ["uid", ...config.columns.filter(c => c !== "uid"), "Status", "New Note", "Save"];
+  tableColumns = ["uid", ...config.columns.filter(c => c !== "uid"), "Status", "New Note", "Save", "View Parcel", "Notes Page"];
 
   const dropdowns = tableColumns.map(col => {
-    if (["New Note", "Save"].includes(col)) return `<th>${col}</th>`;
+    if (["New Note", "Save", "Notes Page", "View Parcel"].includes(col)) return `<th>${col}</th>`;
     const values = [...new Set(uids.map(uid => parcels[uid]?.[col]).filter(Boolean))].sort();
     return `<th>
       <select data-col="${col}" class="filter">
@@ -128,11 +143,13 @@ function renderTable(uids, parcels, fbData, config) {
           </select>
         </td>`;
       } else if (col === "New Note") {
-        rowHtml += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea>
-        <div><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></div>
-        </td>`;
+        rowHtml += `<td><textarea rows="2" class="note" data-uid="${uid}"></textarea></td>`;
       } else if (col === "Save") {
         rowHtml += `<td><button data-uid="${uid}" class="save">💾</button></td>`;
+      } else if (col === "View Parcel") {
+        rowHtml += `<td><a href="index.html?uid=${uid}" target="_blank">View</a></td>`;
+      } else if (col === "Notes Page") {
+        rowHtml += `<td><a href="notes.html?uid=${uid}" target="_blank">📋 Notes</a></td>`;
       } else {
         rowHtml += `<td>${(parcel[col] ?? fb[col]) || ""}</td>`;
       }
@@ -147,39 +164,55 @@ function renderTable(uids, parcels, fbData, config) {
   container.innerHTML = html;
 
   document.querySelectorAll(".save").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const uid = btn.dataset.uid;
       const noteEl = document.querySelector(`textarea.note[data-uid='${uid}']`);
       const statusEl = document.querySelector(`select.status[data-uid='${uid}']`);
       const newNote = noteEl.value.trim();
       const newStatus = statusEl.value;
 
-      get(child(ref(db), `${uid}/notes`)).then(snapshot => {
-        const notes = snapshot.val() || [];
-        if (newNote) {
-          notes.push({ text: newNote, user: "Ben", timestamp: new Date().toISOString() });
-        }
-        update(ref(db, uid), { status: newStatus, notes }).then(() => {
-          alert("Saved!");
-          location.reload();
-        });
-      });
+      const snap = await get(child(ref(db), `${uid}/notes`));
+      const notes = snap.exists() ? Object.values(snap.val()) : [];
+      if (newNote) {
+        notes.push({ text: newNote, user: "Ben", timestamp: new Date().toISOString() });
+      }
+
+      await update(ref(db, uid), { status: newStatus, notes });
+      await refreshTable();
     });
   });
 
   document.querySelectorAll(".filter").forEach(drop => {
     drop.addEventListener("change", () => {
       applyFilters();
-      sortTableBody();
     });
   });
+
+  updateSummary();
 }
 
-Promise.all([
-  loadConfig(),
-  fetchGeoJSON(),
-  get(ref(db))
-]).then(([config, geojson, snapshot]) => {
+async function refreshTable() {
+  const [config, geojson, snapshot] = await Promise.all([
+    loadConfig(),
+    fetchGeoJSON(),
+    get(ref(db))
+  ]);
+  const parcels = {};
+  const uids = [];
+  geojson.features.forEach(f => {
+    const uid = f.properties.uid;
+    if (uid) {
+      uids.push(uid);
+      parcels[uid] = f.properties;
+    }
+  });
+  renderTable(uids, parcels, snapshot.val() || {}, config);
+  document.getElementById("searchBox").value = lastSearch;
+  applyFilters();
+  searchFilter();
+}
+
+Promise.all([loadConfig(), fetchGeoJSON(), get(ref(db))]).then(([config, geojson, snapshot]) => {
   const parcels = {};
   const uids = [];
   geojson.features.forEach(f => {
