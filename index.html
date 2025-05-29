@@ -121,6 +121,7 @@ document.getElementById("statusToggle").addEventListener("change", () => {
     });
   });
 });
+
 const loadConfig = async () => {
   config = await fetch("project_config.json").then(r => r.json());
   config.statuses.forEach(s => {
@@ -260,6 +261,18 @@ document.getElementById("clearSelected").onclick = () => {
   });
   updateAcreageDisplay();
 };
+
+// ✅ Auto-zoom to parcel on load if UID provided in URL
+const urlParams = new URLSearchParams(window.location.search);
+const targetUID = urlParams.get("uid");
+if (targetUID) {
+  geoLayer.eachLayer(layer => {
+    if (layer.feature?.properties?.uid === targetUID) {
+      map.setView(layer.getBounds().getCenter(), 17);
+      layer.openPopup();
+    }
+  });
+}
 </script>
 </body>
 </html>
