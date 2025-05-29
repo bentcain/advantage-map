@@ -7,10 +7,10 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; } /* REMOVED table-layout: fixed */
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; box-sizing: border-box; }
     input, select, textarea { font-size: 14px; width: 100%; box-sizing: border-box; }
-    textarea { resize: vertical; min-height: 3em; overflow-y: hidden; } /* Added min-height */
+    textarea { resize: vertical; overflow-y: hidden; }
     .reply { margin-left: 15px; border-left: 2px solid #999; padding-left: 10px; margin-top: 5px; }
     .reply-box { margin-top: 6px; }
     select.filter { width: 100%; }
@@ -29,7 +29,6 @@
   </table>
 
 <script type="module">
-// Firebase setup
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
 import { getDatabase, ref, child, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
 import { firebaseConfig } from './firebase-config.js';
@@ -127,7 +126,7 @@ function buildTable() {
         const ta = document.createElement("textarea");
         ta.className = "note";
         ta.placeholder = "Add note...";
-        ta.rows = 3;
+        ta.rows = 30;
         ta.oninput = () => autoGrow(ta);
         td.appendChild(ta);
       } else if (col === "Save") {
@@ -176,7 +175,7 @@ function buildTable() {
             const replyBox = document.createElement("div");
             replyBox.className = "reply-box";
             replyBox.innerHTML = `
-              <textarea id="reply-${uid}-${noteId}" rows="3" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+              <textarea id="reply-${uid}-${noteId}" rows="30" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
               <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
             `;
             div.appendChild(replyBox);
