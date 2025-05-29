@@ -29,8 +29,9 @@
   </table>
 
 <script type="module">
+// Firebase imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-import { getDatabase, ref, child, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+import { getDatabase, ref, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
 import { firebaseConfig } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
@@ -126,7 +127,7 @@ function buildTable() {
         const ta = document.createElement("textarea");
         ta.className = "note";
         ta.placeholder = "Add note...";
-        ta.rows = 30;
+        ta.style.height = "200px";
         ta.oninput = () => autoGrow(ta);
         td.appendChild(ta);
       } else if (col === "Save") {
@@ -175,7 +176,7 @@ function buildTable() {
             const replyBox = document.createElement("div");
             replyBox.className = "reply-box";
             replyBox.innerHTML = `
-              <textarea id="reply-${uid}-${noteId}" rows="30" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+              <textarea id="reply-${uid}-${noteId}" style="height: 150px;" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
               <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
             `;
             div.appendChild(replyBox);
