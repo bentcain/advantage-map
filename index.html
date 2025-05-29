@@ -20,6 +20,18 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
+    #master-link, #notes-link {
+      position: absolute;
+      left: 180px;
+      background: white;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      z-index: 1000;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+    #master-link { bottom: 80px; }
+    #notes-link { bottom: 45px; }
     #labelToggleContainer {
       position: absolute;
       top: 15px;
@@ -33,7 +45,7 @@
     }
     #acreageDisplay {
       position: absolute;
-      top: 100px;
+      top: 60px;
       right: 15px;
       background: white;
       padding: 8px 12px;
@@ -55,60 +67,44 @@
 </head>
 <body>
 <div id="map"></div>
-
 <div class="legend" id="status-legend"></div>
-
 <div id="labelToggleContainer">
-  <div>
-    <input type="checkbox" id="labelToggle">
-    <label for="labelToggle">Show Labels</label>
-  </div>
+  <input type="checkbox" id="labelToggle">
+  <label for="labelToggle">Show Labels</label>
   <div style="margin-top:6px;">
     <input type="checkbox" id="statusToggle" checked>
     <label for="statusToggle">Show Status</label>
   </div>
 </div>
-
 <div id="acreageDisplay">
   <span id="acreageCount">Total Acres: 0</span><br />
   <button id="clearSelected">Clear Selected</button>
 </div>
-
-<a id="master-link" href="master.html" target="_blank" style="position:absolute;left:180px;bottom:80px;z-index:1000;background:white;padding:6px 12px;border-radius:8px;box-shadow:0 0 5px rgba(0,0,0,0.2);font-family:sans-serif;">📊 View Master Spreadsheet</a>
-<a id="notes-link" href="notes.html" target="_blank" style="position:absolute;left:180px;bottom:45px;z-index:1000;background:white;padding:6px 12px;border-radius:8px;box-shadow:0 0 5px rgba(0,0,0,0.2);font-family:sans-serif;">📋 View Full Notes Table</a>
+<a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
+<a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
 
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-import { getDatabase, ref, child, get, update } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+import { getDatabase, ref, update, child, get } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
 import { firebaseConfig } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const map = L.map('map').setView([39.8, -89.6], 7);
-let totalAcres = 0;
-const selectedParcels = new Set();
 const labelLayerGroup = L.layerGroup();
+const map = L.map('map').setView([39.8, -89.6], 7);
+const selectedParcels = new Set();
+let totalAcres = 0;
+
+const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles © Esri', maxZoom: 19
+});
+imagery.addTo(map);
 
 const statusColors = {};
+const statusOrder = {};
 let config = {};
-let geoLayer;
-
-const loadConfig = async () => {
-  config = await fetch("project_config.json").then(r => r.json());
-  config.statuses.forEach(s => {
-    statusColors[s.name] = s.color;
-  });
-};
-
-const getStatusColor = (status) => {
-  return document.getElementById("statusToggle").checked ? (statusColors[status] || "#ccc") : "#ccc";
-};
-
-const updateAcreageDisplay = () => {
-  document.getElementById("acreageCount").textContent = `Total Acres: ${totalAcres.toLocaleString()}`;
-};
 
 document.getElementById("labelToggle").addEventListener("change", e => {
   if (e.target.checked) labelLayerGroup.addTo(map);
@@ -118,32 +114,69 @@ document.getElementById("labelToggle").addEventListener("change", e => {
 document.getElementById("statusToggle").addEventListener("change", () => {
   geoLayer.eachLayer(layer => {
     const status = layer.feature?.properties?.Status || "New";
-    layer.setStyle({ fillColor: getStatusColor(status) });
+    layer.setStyle({ fillColor: document.getElementById("statusToggle").checked ? (statusColors[status] || "#ccc") : "#ccc" });
   });
 });
 
-document.getElementById("clearSelected").onclick = () => {
-  totalAcres = 0;
-  selectedParcels.clear();
-  geoLayer.eachLayer(layer => {
-    layer.setStyle({ weight: 1, color: "#444" });
+const loadConfig = async () => {
+  config = await fetch("project_config.json").then(r => r.json());
+  config.statuses.forEach(s => {
+    statusColors[s.name] = s.color;
+    statusOrder[s.name.toLowerCase()] = s.order;
   });
-  updateAcreageDisplay();
+};
+
+const getStatusColor = s => statusColors[s] || "#ccc";
+
+const updateLegend = () => {
+  const legend = document.getElementById("status-legend");
+  legend.innerHTML = "<strong>Lead Status</strong><br>";
+  for (const key in statusColors) {
+    legend.innerHTML += `<i style="background:${statusColors[key]};width:12px;height:12px;display:inline-block;margin-right:6px;"></i>${key}<br>`;
+  }
+};
+
+const updateAcreageDisplay = () => {
+  document.getElementById("acreageCount").textContent = `Total Acres: ${totalAcres.toLocaleString()}`;
+};
+
+window.saveNote = async (uid) => {
+  const note = document.getElementById(`note-${uid}`).value.trim();
+  const status = document.getElementById(`status-${uid}`).value;
+  if (!note && !status) return;
+  const snap = await get(child(ref(db), `${uid}/notes`));
+  const notes = snap.val() || [];
+  if (note) {
+    notes.push({ text: note, user: "Ben", timestamp: new Date().toISOString() });
+  }
+  const updates = { status, notes };
+  update(ref(db, uid), updates).then(() => {
+    updateParcelStyleByUID(uid, status);
+    alert("Saved!");
+  });
+};
+
+const updateParcelStyleByUID = (uid, newStatus) => {
+  map.eachLayer(layer => {
+    if (layer.feature?.properties?.uid === uid) {
+      layer.setStyle({ fillColor: getStatusColor(newStatus) });
+      layer.feature.properties.Status = newStatus;
+    }
+  });
 };
 
 await loadConfig();
-
 const geoFile = await fetch("geojson_filename.txt").then(r => r.text());
 const geojson = await fetch(geoFile.trim()).then(r => r.json());
 
-geoLayer = L.geoJSON(geojson, {
+const geoLayer = L.geoJSON(geojson, {
   style: f => ({
     color: "#444",
     weight: 1,
-    fillColor: getStatusColor(f.properties.Status),
+    fillColor: getStatusColor(f.properties?.Status),
     fillOpacity: 0.6
   }),
-  onEachFeature: async (feature, layer) => {
+  onEachFeature: (feature, layer) => {
     const props = feature.properties || {};
     const uid = props.uid;
     const center = layer.getBounds().getCenter();
@@ -169,50 +202,44 @@ geoLayer = L.geoJSON(geojson, {
       updateAcreageDisplay();
     });
 
-    const snap = await get(child(ref(db), uid));
-    const fb = snap.val() || {};
-    const currentStatus = fb.status || props.Status || "New";
-    const notes = fb.notes || [];
-    props.Status = currentStatus;
+    get(child(ref(db), uid)).then(snapshot => {
+      const fb = snapshot.val() || {};
+      const currentStatus = fb.status || props.Status || "New";
+      const notes = fb.notes || [];
+      props.Status = currentStatus;
+      layer.setStyle({ fillColor: getStatusColor(currentStatus) });
 
-    layer.setStyle({ fillColor: getStatusColor(currentStatus) });
+      const statusOptions = config.statuses.map(s =>
+        `<option value="${s.name}" ${s.name === currentStatus ? "selected" : ""}>${s.name}</option>`
+      ).join("");
 
-    const statusOptions = config.statuses.map(s =>
-      `<option value="${s.name}" ${s.name === currentStatus ? "selected" : ""}>${s.name}</option>`
-    ).join("");
+      let popup = "<table>";
+      config.columns.slice(0, 8).forEach(col => {
+        popup += `<tr><td><strong>${col}</strong></td><td>${props[col] || ""}</td></tr>`;
+      });
 
-    let popup = "<table>";
-    config.columns.slice(0, 8).forEach(col => {
-      popup += `<tr><td><strong>${col}</strong></td><td>${props[col] || ""}</td></tr>`;
+      popup += `<tr><td><strong>Status</strong></td><td><select id="status-${uid}">${statusOptions}</select></td></tr>`;
+      popup += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3"></textarea></td></tr>`;
+      popup += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
+
+      if (notes.length > 0) {
+        const last = notes[notes.length - 1];
+        popup += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text}<br><small>${last.user} - ${last.timestamp}</small></td></tr>`;
+      }
+
+      popup += `<tr><td colspan="2"><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></td></tr>`;
+      popup += `<tr><td colspan="2"><a href="master.html?uid=${uid}" target="_blank">🗂️ Open in Master</a></td></tr>`;
+      popup += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
+      popup += "</table>";
+
+      layer.bindPopup(popup);
     });
-
-    popup += `<tr><td><strong>Status</strong></td><td><select id="status-${uid}">${statusOptions}</select></td></tr>`;
-    popup += `<tr><td><strong>New Note</strong></td><td><textarea id="note-${uid}" rows="3"></textarea></td></tr>`;
-    popup += `<tr><td colspan="2"><button onclick="saveNote('${uid}')">💾 Save</button></td></tr>`;
-
-    if (notes.length > 0) {
-      const last = notes[notes.length - 1];
-      popup += `<tr><td colspan="2"><em>Last Note:</em><br>${last.text}<br><small>${last.user} - ${last.timestamp}</small></td></tr>`;
-    }
-
-    popup += `<tr><td colspan="2"><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></td></tr>`;
-    popup += `<tr><td colspan="2"><a href="master.html?uid=${uid}" target="_blank">🗂️ Open in Master</a></td></tr>`;
-    popup += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
-    popup += "</table>";
-
-    layer.bindPopup(popup);
   }
 }).addTo(map);
 
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-  attribution: "Tiles © Esri"
-}).addTo(map);
-
 map.fitBounds(geoLayer.getBounds());
-
-if (document.getElementById("labelToggle").checked) {
-  labelLayerGroup.addTo(map);
-}
+updateLegend();
+if (document.getElementById("labelToggle").checked) labelLayerGroup.addTo(map);
 
 map.addControl(new L.Control.Search({
   layer: geoLayer,
@@ -221,6 +248,15 @@ map.addControl(new L.Control.Search({
   zoom: 17,
   marker: false
 }));
+
+document.getElementById("clearSelected").onclick = () => {
+  totalAcres = 0;
+  selectedParcels.clear();
+  geoLayer.eachLayer(layer => {
+    layer.setStyle({ weight: 1, color: "#444" });
+  });
+  updateAcreageDisplay();
+};
 </script>
 </body>
 </html>
