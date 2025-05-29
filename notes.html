@@ -9,10 +9,12 @@
     body { font-family: sans-serif; margin: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
     th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; box-sizing: border-box; }
-    input, select, textarea { font-size: 14px; }
-    textarea { resize: vertical; overflow-y: hidden; width: 100%; }
+    input, select, textarea { font-size: 14px; width: 100%; box-sizing: border-box; }
+    textarea { resize: vertical; overflow-y: hidden; }
+    .reply { margin-left: 15px; border-left: 2px solid #999; padding-left: 10px; margin-top: 5px; }
     .reply-box { margin-top: 6px; }
     select.filter { width: 100%; }
+    details summary { cursor: pointer; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -28,7 +30,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
-    import { getDatabase, ref, child, get, update } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+    import { getDatabase, ref, child, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
     import { firebaseConfig } from './firebase-config.js';
 
     const app = initializeApp(firebaseConfig);
@@ -97,14 +99,14 @@
         const parcel = parcels[uid] || {};
         const fb = fbData[uid] || {};
         const status = fb.status || parcel.Status || "New";
-        const notes = Array.isArray(fb.notes) ? fb.notes : Object.values(fb.notes || {});
+        const notes = fb.notes || {};
         const tr = document.createElement("tr");
         tr.style.backgroundColor = statusColors[status] || "";
 
-        const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status} ${notes.map(n => n.text).join(" ")}`.toLowerCase();
+        const searchable = `${uid} ${dynamicCols.map(k => parcel[k] || "").join(" ")} ${status}`.toLowerCase();
         tr.dataset.searchable = searchable;
 
-        columns.forEach((col, i) => {
+        columns.forEach(col => {
           const td = document.createElement("td");
 
           if (col === "uid") td.textContent = uid;
@@ -120,53 +122,67 @@
               sel.appendChild(opt);
             });
             td.appendChild(sel);
-          }
-          else if (col === "New Note") {
+          } else if (col === "New Note") {
             const ta = document.createElement("textarea");
             ta.className = "note";
             ta.placeholder = "Add note...";
             ta.rows = 2;
             ta.oninput = () => autoGrow(ta);
             td.appendChild(ta);
-          }
-          else if (col === "Save") {
+          } else if (col === "Save") {
             const btn = document.createElement("button");
             btn.textContent = "💾";
             btn.onclick = async () => {
               const status = tr.querySelector("select.status").value;
               const note = tr.querySelector("textarea.note").value.trim();
               if (!note) return;
-
+              const noteId = "note_" + Math.random().toString(36).slice(2, 9);
               const noteObj = {
                 text: note,
                 user: currentUser,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                replies: []
               };
-
-              const noteRef = child(ref(db), `${uid}/notes`);
-              const snapshot = await get(noteRef);
-              const existing = snapshot.val() || [];
-              const notes = Array.isArray(existing) ? existing : Object.values(existing);
-              notes.push(noteObj);
-              await update(ref(db, uid), { status, notes });
+              await update(ref(db, `${uid}`), {
+                status,
+                [`notes/${noteId}`]: noteObj
+              });
               await loadFirebase();
               buildTable();
               document.getElementById("searchInput").value = lastSearch;
               applySearch();
             };
             td.appendChild(btn);
-          }
-          else if (col === "Note History") {
-            td.innerHTML = notes.map((n, i) => `
-              <div>
-                <strong>${n.user || "?"}:</strong> ${n.text}
-                <br><small>${n.timestamp || ""}</small>
-                <div class="reply-box">
-                  <textarea id="reply-${uid}-${i}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
-                  <button onclick="replyToNote('${uid}', 'reply-${uid}-${i}')">Reply</button>
-                </div>
-              </div><hr>
-            `).join("") || "<em>No notes</em>";
+          } else if (col === "Note History") {
+            const entries = Object.entries(notes);
+            if (!entries.length) td.innerHTML = "<em>No notes</em>";
+            else {
+              const details = document.createElement("details");
+              const summary = document.createElement("summary");
+              summary.textContent = `View ${entries.length} note(s)`;
+              details.appendChild(summary);
+              entries.forEach(([noteId, note]) => {
+                const div = document.createElement("div");
+                div.innerHTML = `<strong>${note.user}</strong>: ${note.text}<br><small>${note.timestamp}</small>`;
+                if (note.replies?.length) {
+                  note.replies.forEach(reply => {
+                    const r = document.createElement("div");
+                    r.className = "reply";
+                    r.innerHTML = `<strong>${reply.user}</strong>: ${reply.text}<br><small>${reply.timestamp}</small>`;
+                    div.appendChild(r);
+                  });
+                }
+                const replyBox = document.createElement("div");
+                replyBox.className = "reply-box";
+                replyBox.innerHTML = `
+                  <textarea id="reply-${uid}-${noteId}" rows="1" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+                  <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
+                `;
+                div.appendChild(replyBox);
+                details.appendChild(div);
+              });
+              td.appendChild(details);
+            }
           }
 
           tr.appendChild(td);
@@ -201,33 +217,28 @@
       document.querySelectorAll("select.filter").forEach(sel => {
         if (sel.value) terms[sel.dataset.col] = sel.value;
       });
-
       document.querySelectorAll("tbody tr").forEach(tr => {
         const visible = Object.entries(terms).every(([col, val]) => {
-          const idx = [...tr.children].findIndex(td => td.dataset.col === col);
-          return tr.cells[idx]?.textContent.includes(val);
+          const cell = Array.from(tr.children).find(td => td.dataset.col === col);
+          return cell?.textContent.includes(val);
         });
         tr.style.display = visible ? "" : "none";
       });
     }
 
-    window.replyToNote = async (uid, replyId) => {
-      const textarea = document.getElementById(replyId);
-      const replyText = textarea?.value?.trim();
-      if (!replyText) return;
-
-      const noteObj = {
-        text: "🔁 " + replyText,
+    window.replyToNote = async (uid, noteId) => {
+      const ta = document.getElementById(`reply-${uid}-${noteId}`);
+      const text = ta?.value?.trim();
+      if (!text) return;
+      const replyRef = ref(db, `${uid}/notes/${noteId}/replies`);
+      const snap = await get(replyRef);
+      const replies = snap.val() || [];
+      replies.push({
+        text: "🔁 " + text,
         user: currentUser,
         timestamp: new Date().toISOString()
-      };
-
-      const noteRef = child(ref(db), `${uid}/notes`);
-      const snapshot = await get(noteRef);
-      const existing = snapshot.val() || [];
-      const notes = Array.isArray(existing) ? existing : Object.values(existing);
-      notes.push(noteObj);
-      await update(ref(db, uid), { notes });
+      });
+      await set(replyRef, replies);
       await loadFirebase();
       buildTable();
       document.getElementById("searchInput").value = lastSearch;
@@ -241,6 +252,7 @@
 
     function applySearch() {
       const term = lastSearch.toLowerCase();
+      document.getElementById("searchInput").value = lastSearch;
       document.querySelectorAll("tbody tr").forEach(tr => {
         tr.style.display = tr.dataset.searchable.includes(term) ? "" : "none";
       });
