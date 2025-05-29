@@ -114,7 +114,7 @@ document.getElementById("labelToggle").addEventListener("change", e => {
 document.getElementById("statusToggle").addEventListener("change", () => {
   geoLayer.eachLayer(layer => {
     const status = layer.feature?.properties?.Status || "New";
-    layer.setStyle({ fillColor: document.getElementById("statusToggle").checked ? (statusColors[status] || "#ccc") : "#ccc" });
+    layer.setStyle({ fillColor: document.getElementById("statusToggle").checked ? (statusColors[status] || "#ccc") : "#ccc", fillOpacity: showStatus ? 0.6 : 0 });
   });
 });
 
