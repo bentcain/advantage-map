@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Landowner Dashboard</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; box-sizing: border-box; }
+    input, select, textarea { font-size: 14px; width: 100%; box-sizing: border-box; }
+    textarea { resize: vertical; overflow-y: hidden; }
+    .reply { margin-left: 15px; border-left: 2px solid #999; padding-left: 10px; margin-top: 5px; }
+    .reply-box { margin-top: 6px; }
+    select.filter { width: 100%; }
+    details summary { cursor: pointer; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Landowner Dashboard</h2>
+  <input type="text" id="searchInput" placeholder="Search..." />
+  <table id="landTable">
+    <thead>
+      <tr id="filterRow"></tr>
+      <tr id="headerRow"></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-app.js";
+import { getDatabase, ref, get, update, set } from "https://www.gstatic.com/firebasejs/11.7.0/firebase-database.js";
+import { firebaseConfig } from './firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const uidParam = new URLSearchParams(window.location.search).get("uid");
+const currentUser = localStorage.getItem("username") || "Ben";
+
+let config = {}, statusColors = {}, statusOrder = {}, parcels = {}, fbData = {}, lastSearch = "";
+
+await loadConfig();
+await loadGeojson();
+await loadFirebase();
+buildTable();
+
+async function loadConfig() {
+  const res = await fetch("project_config.json");
+  config = await res.json();
+  config.statuses.forEach(s => {
+    statusColors[s.name] = s.color;
+    statusOrder[s.name.toLowerCase()] = s.order;
+  });
+}
+
+async function loadGeojson() {
+  const file = await fetch("geojson_filename.txt").then(r => r.text());
+  const data = await fetch(file.trim()).then(r => r.json());
+  data.features.forEach(f => {
+    const uid = f.properties.uid;
+    if (uid) parcels[uid] = f.properties;
+  });
+}
+
+async function loadFirebase() {
+  const snapshot = await get(ref(db));
+  fbData = snapshot.val() || {};
+}
+
+function buildTable() {
+  const uids = uidParam ? [uidParam] : Object.keys(parcels);
+  const columns = ["uid", "parent", "email", ...Array.from({ length: 5 }, (_, i) => `phone${i+1}`), ...Array.from({ length: 5 }, (_, i) => `comment${i+1}`), "Status", "New Note", "Save", "Note History", "View Parcel"];
+
+  const headerRow = document.getElementById("headerRow");
+  const filterRow = document.getElementById("filterRow");
+  const tbody = document.querySelector("#landTable tbody");
+  headerRow.innerHTML = "";
+  filterRow.innerHTML = "";
+  tbody.innerHTML = "";
+
+  columns.forEach(col => {
+    headerRow.innerHTML += `<th>${col}</th>`;
+    const fth = document.createElement("th");
+    if (!["New Note", "Save", "Note History", "View Parcel"].includes(col)) {
+      const sel = document.createElement("select");
+      sel.innerHTML = `<option value="">All</option>`;
+      sel.dataset.col = col;
+      sel.className = "filter";
+      fth.appendChild(sel);
+    }
+    filterRow.appendChild(fth);
+  });
+
+  const rowData = [];
+
+  uids.forEach(uid => {
+    const parcel = parcels[uid] || {};
+    const fb = fbData[uid] || {};
+    const contact = fb.contact || {};
+    const status = fb.status || parcel.Status || "New";
+    const notes = fb.notes || {};
+    const tr = document.createElement("tr");
+    tr.style.backgroundColor = statusColors[status] || "";
+
+    const searchable = `${uid} ${parcel.parent || ""} ${status}`.toLowerCase();
+    tr.dataset.searchable = searchable;
+
+    columns.forEach(col => {
+      const td = document.createElement("td");
+      if (col === "uid") td.textContent = uid;
+      else if (col === "parent" || col === "email") {
+        const inp = document.createElement("input");
+        inp.value = contact[col] || parcel[col] || "";
+        inp.dataset.field = col;
+        td.appendChild(inp);
+      } else if (col.startsWith("phone")) {
+        const idx = parseInt(col.replace("phone", "")) - 1;
+        const inp = document.createElement("input");
+        inp.value = contact.phones?.[idx] || "";
+        inp.dataset.phoneIndex = idx;
+        td.appendChild(inp);
+      } else if (col.startsWith("comment")) {
+        const idx = parseInt(col.replace("comment", "")) - 1;
+        const inp = document.createElement("input");
+        inp.value = contact.phone_comments?.[idx] || "";
+        inp.dataset.commentIndex = idx;
+        td.appendChild(inp);
+      } else if (col === "Status") {
+        const sel = document.createElement("select");
+        sel.className = "status";
+        config.statuses.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.name;
+          opt.textContent = s.name;
+          if (s.name === status) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        td.appendChild(sel);
+      } else if (col === "New Note") {
+        const ta = document.createElement("textarea");
+        ta.className = "note";
+        ta.placeholder = "Add note...";
+        ta.style.height = "200px";
+        ta.oninput = () => autoGrow(ta);
+        td.appendChild(ta);
+      } else if (col === "Save") {
+        const btn = document.createElement("button");
+        btn.textContent = "💾";
+        btn.onclick = async () => {
+          const status = tr.querySelector("select.status").value;
+          const note = tr.querySelector("textarea.note").value.trim();
+          const parent = tr.querySelector("input[data-field='parent']")?.value || "";
+          const email = tr.querySelector("input[data-field='email']")?.value || "";
+          const phones = Array.from(tr.querySelectorAll("input[data-phoneIndex]")).map(i => i.value.trim());
+          const comments = Array.from(tr.querySelectorAll("input[data-commentIndex]")).map(i => i.value.trim());
+
+          const contact = { parent, email, phones, phone_comments: comments };
+
+          const updates = { status, contact };
+          if (note) {
+            const noteId = "note_" + Math.random().toString(36).slice(2, 9);
+            updates[`notes/${noteId}`] = {
+              text: note,
+              user: currentUser,
+              timestamp: new Date().toISOString(),
+              replies: []
+            };
+          }
+
+          await update(ref(db, `${uid}`), updates);
+          await loadFirebase();
+          buildTable();
+          document.getElementById("searchInput").value = lastSearch;
+          applySearch();
+        };
+        td.appendChild(btn);
+      } else if (col === "Note History") {
+        const entries = Object.entries(notes);
+        if (!entries.length) td.innerHTML = "<em>No notes</em>";
+        else {
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = `View ${entries.length} note(s)`;
+          details.appendChild(summary);
+          entries.forEach(([noteId, note]) => {
+            const div = document.createElement("div");
+            div.innerHTML = `<strong>${note.user}</strong>: ${note.text}<br><small>${note.timestamp}</small>`;
+            if (note.replies?.length) {
+              note.replies.forEach(reply => {
+                const r = document.createElement("div");
+                r.className = "reply";
+                r.innerHTML = `<strong>${reply.user}</strong>: ${reply.text}<br><small>${reply.timestamp}</small>`;
+                div.appendChild(r);
+              });
+            }
+            const replyBox = document.createElement("div");
+            replyBox.className = "reply-box";
+            replyBox.innerHTML = `
+              <textarea id="reply-${uid}-${noteId}" style="height: 150px;" placeholder="Reply..." oninput="autoGrow(this)"></textarea>
+              <button onclick="replyToNote('${uid}', '${noteId}')">Respond</button>
+            `;
+            div.appendChild(replyBox);
+            details.appendChild(div);
+          });
+          td.appendChild(details);
+        }
+      } else if (col === "View Parcel") {
+        td.innerHTML = `<a href="index.html?uid=${uid}" target="_blank">🔍 View</a>`;
+      }
+      tr.appendChild(td);
+    });
+
+    const order = statusOrder[status.toLowerCase()] || 99;
+    rowData.push({ tr, order });
+  });
+
+  rowData.sort((a, b) => a.order - b.order).forEach(r => tbody.appendChild(r.tr));
+
+  document.querySelectorAll("select.filter").forEach(sel => {
+    const col = sel.dataset.col;
+    const idx = columns.indexOf(col);
+    const values = new Set();
+    rowData.forEach(row => {
+      const val = row.tr.cells[idx]?.textContent;
+      if (val) values.add(val);
+    });
+    [...values].sort().forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", applyFilters);
+  });
+}
+
+function applyFilters() {
+  const terms = {};
+  document.querySelectorAll("select.filter").forEach(sel => {
+    if (sel.value) terms[sel.dataset.col] = sel.value;
+  });
+  document.querySelectorAll("tbody tr").forEach(tr => {
+    const visible = Object.entries(terms).every(([col, val]) => {
+      const cell = Array.from(tr.children).find(td => td.dataset.col === col);
+      return cell?.textContent.includes(val);
+    });
+    tr.style.display = visible ? "" : "none";
+  });
+}
+
+window.replyToNote = async (uid, noteId) => {
+  const ta = document.getElementById(`reply-${uid}-${noteId}`);
+  const text = ta?.value?.trim();
+  if (!text) return;
+  const replyRef = ref(db, `${uid}/notes/${noteId}/replies`);
+  const snap = await get(replyRef);
+  const replies = snap.val() || [];
+  replies.push({
+    text: "🔁 " + text,
+    user: currentUser,
+    timestamp: new Date().toISOString()
+  });
+  await set(replyRef, replies);
+  await loadFirebase();
+  buildTable();
+  document.getElementById("searchInput").value = lastSearch;
+  applySearch();
+};
+
+window.autoGrow = function(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = textarea.scrollHeight + "px";
+};
+
+document.getElementById("searchInput").addEventListener("input", e => {
+  lastSearch = e.target.value;
+  applySearch();
+});
+
+function applySearch() {
+  const term = lastSearch.toLowerCase();
+  document.getElementById("searchInput").value = lastSearch;
+  document.querySelectorAll("tbody tr").forEach(tr => {
+    tr.style.display = tr.dataset.searchable.includes(term) ? "" : "none";
+  });
+}
+</script>
+</body>
+</html>
