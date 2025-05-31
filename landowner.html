@@ -182,8 +182,11 @@ function buildTable() {
           const note = tr.querySelector("textarea.note").value.trim();
           const parent = parcel.Parent || "";
           const email = tr.querySelector("input[data-field='email']")?.value || "";
-          const phones = Array.from(tr.querySelectorAll("input[data-phoneIndex]")).map(i => i.value.trim());
-          const comments = Array.from(tr.querySelectorAll("input[data-commentIndex]")).map(i => i.value.trim());
+
+          const phones = Array.from(tr.querySelector("td.phones")?.querySelectorAll("input[data-phoneIndex]") || [])
+            .map(i => i.value.trim());
+          const comments = Array.from(tr.querySelector("td.comments")?.querySelectorAll("input[data-commentIndex]") || [])
+            .map(i => i.value.trim());
 
           const contact = { parent, email, phones, phone_comments: comments };
           const updates = { status, contact };
