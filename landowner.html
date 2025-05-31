@@ -7,14 +7,17 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
-    th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; box-sizing: border-box; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; table-layout: fixed; }
+    th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; box-sizing: border-box; word-wrap: break-word; }
     input, select, textarea { font-size: 14px; width: 100%; box-sizing: border-box; }
     textarea { resize: vertical; overflow-y: hidden; }
     .reply { margin-left: 15px; border-left: 2px solid #999; padding-left: 10px; margin-top: 5px; }
     .reply-box { margin-top: 6px; }
     select.filter { width: 100%; }
     details summary { cursor: pointer; font-weight: bold; }
+    .stacked-inputs input { width: 95%; margin-bottom: 2px; }
+    td.phones, td.comments { max-width: 200px; }
+    td.parent { white-space: normal; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -108,19 +111,20 @@ function buildTable() {
 
     columns.forEach(col => {
       const td = document.createElement("td");
-      if (col === "uid") td.textContent = uid;
-      else if (col === "parent") {
-        const inp = document.createElement("input");
-        inp.value = contact.parent || parcel.Parent || "";
-        inp.dataset.field = "parent";
-        td.appendChild(inp);
+      if (col === "uid") {
+        td.textContent = uid;
+      } else if (col === "parent") {
+        td.className = "parent";
+        td.textContent = contact.parent || parcel.Parent || "";
       } else if (col === "email") {
         const inp = document.createElement("input");
         inp.value = contact.email || "";
         inp.dataset.field = "email";
         td.appendChild(inp);
       } else if (col === "Phones" || col === "Comments") {
+        td.className = col.toLowerCase();
         const container = document.createElement("div");
+        container.className = "stacked-inputs";
         for (let i = 0; i < 10; i++) {
           const inp = document.createElement("input");
           inp.dataset[col === "Phones" ? "phoneIndex" : "commentIndex"] = i;
@@ -152,7 +156,7 @@ function buildTable() {
         btn.onclick = async () => {
           const status = tr.querySelector("select.status").value;
           const note = tr.querySelector("textarea.note").value.trim();
-          const parent = tr.querySelector("input[data-field='parent']")?.value || "";
+          const parent = parcel.Parent || "";
           const email = tr.querySelector("input[data-field='email']")?.value || "";
           const phones = Array.from(tr.querySelectorAll("input[data-phoneIndex]")).map(i => i.value.trim());
           const comments = Array.from(tr.querySelectorAll("input[data-commentIndex]")).map(i => i.value.trim());
