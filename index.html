@@ -20,7 +20,7 @@
       box-shadow: 0 0 6px rgba(0,0,0,0.3);
       z-index: 1000;
     }
-    #master-link, #notes-link {
+    #master-link, #notes-link, #landowner-link {
       position: absolute;
       left: 180px;
       background: white;
@@ -30,8 +30,9 @@
       z-index: 1000;
       box-shadow: 0 0 5px rgba(0,0,0,0.2);
     }
-    #master-link { bottom: 80px; }
-    #notes-link { bottom: 45px; }
+    #master-link { bottom: 115px; }
+    #notes-link { bottom: 80px; }
+    #landowner-link { bottom: 45px; }
     #labelToggleContainer {
       position: absolute;
       top: 15px;
@@ -82,6 +83,7 @@
 </div>
 <a id="master-link" href="master.html" target="_blank">📊 View Master Spreadsheet</a>
 <a id="notes-link" href="notes.html" target="_blank">📋 View Full Notes Table</a>
+<a id="landowner-link" href="landowner.html" target="_blank">👥 View Landowner Dashboard</a>
 
 <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-search@2.9.7/dist/leaflet-search.src.js"></script>
@@ -236,6 +238,7 @@ const geoLayer = L.geoJSON(geojson, {
 
       popup += `<tr><td colspan="2"><a href="notes.html?uid=${uid}" target="_blank">📋 View Notes</a></td></tr>`;
       popup += `<tr><td colspan="2"><a href="master.html?uid=${uid}" target="_blank">🗂️ Open in Master</a></td></tr>`;
+      popup += `<tr><td colspan="2"><a href="landowner.html?uid=${uid}" target="_blank">👥 View Landowner</a></td></tr>`;
       popup += `<tr><td colspan="2"><a href="https://www.google.com/maps?q=&layer=c&cbll=${center.lat},${center.lng}" target="_blank">Street View</a></td></tr>`;
       popup += "</table>";
 
@@ -244,7 +247,6 @@ const geoLayer = L.geoJSON(geojson, {
   }
 }).addTo(map);
 
-// ✅ Only fit to bounds if not zooming to a specific parcel
 if (!targetUID) {
   map.fitBounds(geoLayer.getBounds());
 } else {
