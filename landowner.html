@@ -103,20 +103,25 @@ function buildTable() {
     const tr = document.createElement("tr");
     tr.style.backgroundColor = statusColors[status] || "";
 
-    const searchable = `${uid} ${parcel.parent || ""} ${status}`.toLowerCase();
+    const searchable = `${uid} ${parcel.Parent || ""} ${status}`.toLowerCase();
     tr.dataset.searchable = searchable;
 
     columns.forEach(col => {
       const td = document.createElement("td");
       if (col === "uid") td.textContent = uid;
-      else if (col === "parent" || col === "email") {
+      else if (col === "parent") {
         const inp = document.createElement("input");
-        inp.value = contact[col] || parcel[col] || "";
-        inp.dataset.field = col;
+        inp.value = contact.parent || parcel.Parent || "";
+        inp.dataset.field = "parent";
+        td.appendChild(inp);
+      } else if (col === "email") {
+        const inp = document.createElement("input");
+        inp.value = contact.email || "";
+        inp.dataset.field = "email";
         td.appendChild(inp);
       } else if (col === "Phones" || col === "Comments") {
         const container = document.createElement("div");
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 10; i++) {
           const inp = document.createElement("input");
           inp.dataset[col === "Phones" ? "phoneIndex" : "commentIndex"] = i;
           inp.value = col === "Phones" ? (contact.phones?.[i] || "") : (contact.phone_comments?.[i] || "");
