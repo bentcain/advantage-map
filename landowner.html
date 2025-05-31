@@ -70,7 +70,7 @@ async function loadFirebase() {
 
 function buildTable() {
   const uids = uidParam ? [uidParam] : Object.keys(parcels);
-  const columns = ["uid", "parent", "email", ...Array.from({ length: 5 }, (_, i) => `phone${i+1}`), ...Array.from({ length: 5 }, (_, i) => `comment${i+1}`), "Status", "New Note", "Save", "Note History", "View Parcel"];
+  const columns = ["uid", "parent", "email", "Phones", "Comments", "Status", "New Note", "Save", "Note History", "View Parcel"];
 
   const headerRow = document.getElementById("headerRow");
   const filterRow = document.getElementById("filterRow");
@@ -114,18 +114,15 @@ function buildTable() {
         inp.value = contact[col] || parcel[col] || "";
         inp.dataset.field = col;
         td.appendChild(inp);
-      } else if (col.startsWith("phone")) {
-        const idx = parseInt(col.replace("phone", "")) - 1;
-        const inp = document.createElement("input");
-        inp.value = contact.phones?.[idx] || "";
-        inp.dataset.phoneIndex = idx;
-        td.appendChild(inp);
-      } else if (col.startsWith("comment")) {
-        const idx = parseInt(col.replace("comment", "")) - 1;
-        const inp = document.createElement("input");
-        inp.value = contact.phone_comments?.[idx] || "";
-        inp.dataset.commentIndex = idx;
-        td.appendChild(inp);
+      } else if (col === "Phones" || col === "Comments") {
+        const container = document.createElement("div");
+        for (let i = 0; i < 5; i++) {
+          const inp = document.createElement("input");
+          inp.dataset[col === "Phones" ? "phoneIndex" : "commentIndex"] = i;
+          inp.value = col === "Phones" ? (contact.phones?.[i] || "") : (contact.phone_comments?.[i] || "");
+          container.appendChild(inp);
+        }
+        td.appendChild(container);
       } else if (col === "Status") {
         const sel = document.createElement("select");
         sel.className = "status";
@@ -156,7 +153,6 @@ function buildTable() {
           const comments = Array.from(tr.querySelectorAll("input[data-commentIndex]")).map(i => i.value.trim());
 
           const contact = { parent, email, phones, phone_comments: comments };
-
           const updates = { status, contact };
           if (note) {
             const noteId = "note_" + Math.random().toString(36).slice(2, 9);
