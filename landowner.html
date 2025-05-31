@@ -15,7 +15,9 @@
     .reply-box { margin-top: 6px; }
     select.filter { width: 100%; }
     details summary { cursor: pointer; font-weight: bold; }
-    .stacked-inputs input { width: 95%; margin-bottom: 2px; }
+    .stacked-inputs div { display: flex; align-items: center; margin-bottom: 2px; gap: 4px; }
+    .stacked-inputs input { flex: 1; }
+    .stacked-inputs a.dial-link { text-decoration: none; font-size: 16px; }
     td.phones, td.comments { max-width: 200px; }
     td.parent { white-space: normal; font-weight: bold; }
   </style>
@@ -121,14 +123,36 @@ function buildTable() {
         inp.value = contact.email || "";
         inp.dataset.field = "email";
         td.appendChild(inp);
-      } else if (col === "Phones" || col === "Comments") {
-        td.className = col.toLowerCase();
+      } else if (col === "Phones") {
+        td.className = "phones";
+        const container = document.createElement("div");
+        container.className = "stacked-inputs";
+        for (let i = 0; i < 10; i++) {
+          const row = document.createElement("div");
+          const inp = document.createElement("input");
+          const phoneValue = contact.phones?.[i] || "";
+          inp.value = phoneValue;
+          inp.dataset.phoneIndex = i;
+          const link = document.createElement("a");
+          link.href = phoneValue ? `tel:${phoneValue}` : "";
+          link.className = "dial-link";
+          link.innerText = "📞";
+          inp.addEventListener("input", () => {
+            link.href = inp.value ? `tel:${inp.value}` : "";
+          });
+          row.appendChild(inp);
+          row.appendChild(link);
+          container.appendChild(row);
+        }
+        td.appendChild(container);
+      } else if (col === "Comments") {
+        td.className = "comments";
         const container = document.createElement("div");
         container.className = "stacked-inputs";
         for (let i = 0; i < 10; i++) {
           const inp = document.createElement("input");
-          inp.dataset[col === "Phones" ? "phoneIndex" : "commentIndex"] = i;
-          inp.value = col === "Phones" ? (contact.phones?.[i] || "") : (contact.phone_comments?.[i] || "");
+          inp.dataset.commentIndex = i;
+          inp.value = contact.phone_comments?.[i] || "";
           container.appendChild(inp);
         }
         td.appendChild(container);
